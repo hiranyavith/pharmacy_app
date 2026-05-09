@@ -1,0 +1,17 @@
+// windows/runner/main.cpp already exists in a real Flutter project.
+// Add this file to configure minimum window size.
+// Place content in windows/runner/main.cpp after Flutter project creation.
+
+/*
+  After running: flutter create pharmacy_app
+  
+  Edit windows/runner/main.cpp to set window size:
+  
+  Find the line:
+    window.CreateAndShow(L"pharmacy_app", origin, size);
+  
+  And change the size to:
+    const flutter::Point<int> size(1280, 800);
+    
+  This gives a good default window size for the app.
+*/
