@@ -301,6 +301,33 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                           ]),
                         ),
                       ),
+                      const SizedBox(height: 12),
+
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          width: 260,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                  color: Colors.black.withOpacity(0.06),
+                                  blurRadius: 6)
+                            ],
+                          ),
+                          child: Column(children: [
+                            _TotalLine('Payment Type',
+                                _selected!.paymentType.toString().split('.').last.toUpperCase(), color: _selected!.paymentType.toString().split('.').last == "cash" ?AppTheme.success : AppTheme.textMain,bold: true,),
+                            _TotalLine(
+                                'Customer Name',
+                                _selected!.customerName.isEmpty
+                                    ? '-'
+                                    : _selected!.customerName),
+                          ]),
+                        ),
+                      ),
                     ]),
               ),
       ),
