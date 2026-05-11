@@ -1,4 +1,3 @@
-// lib/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/medicine_service.dart';
@@ -20,10 +19,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selected = 0;
 
   // Summary counts
-  int _totalMeds   = 0;
-  int _lowStock    = 0;
+  int _totalMeds = 0;
+  int _lowStock = 0;
   int _expiringSoon = 0;
-  int _totalBills  = 0;
+  int _totalBills = 0;
+  double _totalBillsValue = 0;
   bool _loadingStats = true;
 
   final _pages = const [
@@ -35,11 +35,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ];
 
   final _navItems = const [
-    _NavItem(Icons.dashboard_outlined,    Icons.dashboard,    'Dashboard'),
-    _NavItem(Icons.medication_outlined,   Icons.medication,   'Medicines'),
-    _NavItem(Icons.point_of_sale_outlined,Icons.point_of_sale,'POS / Billing'),
+    _NavItem(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
+    _NavItem(Icons.medication_outlined, Icons.medication, 'Medicines'),
+    _NavItem(
+        Icons.point_of_sale_outlined, Icons.point_of_sale, 'POS / Billing'),
     _NavItem(Icons.receipt_long_outlined, Icons.receipt_long, 'Bill History'),
-    _NavItem(Icons.warning_amber_outlined,Icons.warning_amber,'Expiry Alerts'),
+    _NavItem(
+        Icons.warning_amber_outlined, Icons.warning_amber, 'Expiry Alerts'),
   ];
 
   @override
@@ -55,12 +57,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final low = await ms.getLowStock();
     final exp = await ms.getExpiringSoon();
     final bills = await bs.getAllBills();
+    final totalValue = await bs.getFullBillValue();
+
     if (!mounted) return;
     setState(() {
-      _totalMeds    = all.length;
-      _lowStock     = low.length;
+      _totalMeds = all.length;
+      _lowStock = low.length;
       _expiringSoon = exp.length;
-      _totalBills   = bills.length;
+      _totalBills = bills.length;
+      _totalBillsValue = double.tryParse(totalValue) ?? 0.00;
       _loadingStats = false;
     });
   }
@@ -68,7 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _logout() {
     AuthService.logout();
     Navigator.pushReplacement(
-      context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+        context, MaterialPageRoute(builder: (_) => const LoginScreen()));
   }
 
   @override
@@ -87,9 +92,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const Icon(Icons.local_pharmacy, color: Colors.white, size: 28),
                 const SizedBox(width: 10),
                 const Expanded(
-                  child: Text('Pharmacy',
-                      style: TextStyle(color: Colors.white,
-                          fontSize: 17, fontWeight: FontWeight.bold)),
+                  child: Text('Health Hub Pharmacy System',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold)),
                 ),
               ]),
             ),
@@ -119,22 +126,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(children: [
-                        Icon(active
-                            ? _navItems[i].activeIcon
-                            : _navItems[i].icon,
-                            color: active
-                                ? Colors.white
-                                : Colors.white70,
+                        Icon(
+                            active
+                                ? _navItems[i].activeIcon
+                                : _navItems[i].icon,
+                            color: active ? Colors.white : Colors.white70,
                             size: 20),
                         const SizedBox(width: 12),
                         Text(_navItems[i].label,
                             style: TextStyle(
-                              color: active
-                                  ? Colors.white
-                                  : Colors.white70,
-                              fontWeight: active
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
+                              color: active ? Colors.white : Colors.white70,
+                              fontWeight:
+                                  active ? FontWeight.w600 : FontWeight.normal,
                               fontSize: 14,
                             )),
                       ]),
@@ -156,12 +159,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(AuthService.currentUser ?? 'Admin',
-                      style: const TextStyle(
-                          color: Colors.white, fontSize: 13)),
+                      style:
+                          const TextStyle(color: Colors.white, fontSize: 13)),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.logout,
-                      color: Colors.white70, size: 18),
+                  icon:
+                      const Icon(Icons.logout, color: Colors.white70, size: 18),
                   tooltip: 'Logout',
                   onPressed: _logout,
                 ),
@@ -174,12 +177,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Expanded(
           child: _selected == 0
               ? _DashboardHome(
-                  totalMeds:    _totalMeds,
-                  lowStock:     _lowStock,
+                  totalMeds: _totalMeds,
+                  lowStock: _lowStock,
                   expiringSoon: _expiringSoon,
-                  totalBills:   _totalBills,
-                  loading:      _loadingStats,
-                  onNavigate:   (i) => setState(() => _selected = i),
+                  totalBills: _totalBills,
+                  totalBillsValue: _totalBillsValue,
+                  loading: _loadingStats,
+                  onNavigate: (i) => setState(() => _selected = i),
                 )
               : _pages[_selected],
         ),
@@ -192,25 +196,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
 class _NavItem {
   final IconData icon;
   final IconData activeIcon;
-  final String   label;
+  final String label;
   const _NavItem(this.icon, this.activeIcon, this.label);
 }
 
 // ── Dashboard home (summary cards) ────────
 class _DashboardHome extends StatelessWidget {
-  final int  totalMeds;
-  final int  lowStock;
-  final int  expiringSoon;
-  final int  totalBills;
+  final int totalMeds;
+  final int lowStock;
+  final int expiringSoon;
+  final int totalBills;
+  final double totalBillsValue;
   final bool loading;
   final void Function(int)? onNavigate;
 
   const _DashboardHome({
-    this.totalMeds    = 0,
-    this.lowStock     = 0,
+    this.totalMeds = 0,
+    this.lowStock = 0,
     this.expiringSoon = 0,
-    this.totalBills   = 0,
-    this.loading      = false,
+    this.totalBills = 0,
+    this.totalBillsValue = 0,
+    this.loading = false,
     this.onNavigate,
   });
 
@@ -218,10 +224,12 @@ class _DashboardHome extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
         const Text('Dashboard',
-            style: TextStyle(fontSize: 22,
-                fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+            style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textMain)),
         const SizedBox(height: 4),
         Text('Welcome back, ${AuthService.currentUser ?? "Admin"}',
             style: const TextStyle(color: AppTheme.textSub)),
@@ -230,18 +238,21 @@ class _DashboardHome extends StatelessWidget {
         // Summary cards
         loading
             ? const Center(child: CircularProgressIndicator())
-            : Wrap(spacing: 16, runSpacing: 16, children: [
-                _StatCard('Total Medicines', '$totalMeds',
-                    Icons.medication, AppTheme.primary,
+            : Wrap(spacing: 40, runSpacing: 20, children: [
+                _StatCard('Total Medicines', '$totalMeds', Icons.medication,
+                    AppTheme.primary,
                     onTap: () => onNavigate?.call(1)),
-                _StatCard('Low Stock', '$lowStock',
-                    Icons.inventory_2, AppTheme.warning,
+                _StatCard('Low Stock', '$lowStock', Icons.inventory_2,
+                    AppTheme.warning,
                     onTap: () => onNavigate?.call(1)),
-                _StatCard('Expiring Soon', '$expiringSoon',
-                    Icons.warning_amber, AppTheme.danger,
+                _StatCard('Expiring Soon', '$expiringSoon', Icons.warning_amber,
+                    AppTheme.danger,
                     onTap: () => onNavigate?.call(4)),
-                _StatCard('Total Bills', '$totalBills',
-                    Icons.receipt_long, AppTheme.success,
+                _StatCard('Total Bills', '$totalBills', Icons.receipt_long,
+                    AppTheme.success,
+                    onTap: () => onNavigate?.call(3)),
+                _StatCard('Total Bills Value', 'Rs $totalBillsValue',
+                    Icons.currency_rupee, AppTheme.success,
                     onTap: () => onNavigate?.call(3)),
               ]),
 
@@ -249,18 +260,20 @@ class _DashboardHome extends StatelessWidget {
 
         // Quick actions
         const Text('Quick Actions',
-            style: TextStyle(fontSize: 16,
-                fontWeight: FontWeight.w600, color: AppTheme.textMain)),
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMain)),
         const SizedBox(height: 12),
         Wrap(spacing: 12, runSpacing: 12, children: [
-          _QuickAction('New Sale', Icons.point_of_sale,
-              AppTheme.primary, () => onNavigate?.call(2)),
-          _QuickAction('Add Medicine', Icons.add_circle,
-              AppTheme.success, () => onNavigate?.call(1)),
-          _QuickAction('Bill History', Icons.history,
-              AppTheme.secondary, () => onNavigate?.call(3)),
-          _QuickAction('Expiry Alerts', Icons.warning_amber,
-              AppTheme.danger, () => onNavigate?.call(4)),
+          _QuickAction('New Sale', Icons.point_of_sale, AppTheme.primary,
+              () => onNavigate?.call(2)),
+          _QuickAction('Add Medicine', Icons.add_circle, AppTheme.success,
+              () => onNavigate?.call(1)),
+          _QuickAction('Bill History', Icons.history, AppTheme.secondary,
+              () => onNavigate?.call(3)),
+          _QuickAction('Expiry Alerts', Icons.warning_amber, AppTheme.danger,
+              () => onNavigate?.call(4)),
         ]),
       ]),
     );
@@ -276,36 +289,41 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(12),
-    child: Container(
-      width: 180,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          padding: const EdgeInsets.all(10),
+        child: Container(
+          width: 180,
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2))
+            ],
           ),
-          child: Icon(icon, color: color, size: 22),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(height: 14),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 28, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(height: 2),
+            Text(label,
+                style: const TextStyle(color: AppTheme.textSub, fontSize: 15)),
+          ]),
         ),
-        const SizedBox(height: 14),
-        Text(value, style: TextStyle(
-            fontSize: 28, fontWeight: FontWeight.bold, color: color)),
-        const SizedBox(height: 2),
-        Text(label, style: const TextStyle(
-            color: AppTheme.textSub, fontSize: 12)),
-      ]),
-    ),
-  );
+      );
 }
 
 class _QuickAction extends StatelessWidget {
@@ -317,14 +335,14 @@ class _QuickAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ElevatedButton.icon(
-    onPressed: onTap,
-    icon: Icon(icon, size: 18),
-    label: Text(label),
-    style: ElevatedButton.styleFrom(
-      backgroundColor: color,
-      foregroundColor: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    ),
-  );
+        onPressed: onTap,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
 }

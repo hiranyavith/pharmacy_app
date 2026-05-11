@@ -28,7 +28,7 @@ class MedicineService {
     final rows = await _db.query(
       '''SELECT * FROM medicines
          WHERE expiry_date IS NOT NULL
-           AND expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+           AND expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)
            AND expiry_date >= CURDATE()
          ORDER BY expiry_date ASC''',
     );
