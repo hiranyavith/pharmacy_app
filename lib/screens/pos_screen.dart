@@ -21,6 +21,7 @@ class _POSScreenState extends State<POSScreen> {
   final _discountCtrl = TextEditingController(text: '0');
   final _cashCtrl = TextEditingController(text: '0');
   final _customerCtrl = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
 
   List<Medicine> _searchResults = [];
   List<CartItem> _cart = [];
@@ -63,6 +64,7 @@ class _POSScreenState extends State<POSScreen> {
       }
       _searchResults = [];
       _searchCtrl.clear();
+      _searchFocus.requestFocus();
     });
   }
 
@@ -120,10 +122,17 @@ class _POSScreenState extends State<POSScreen> {
     }
   }
 
-  void _showBillDialog(Bill bill) => showDialog(
-        context: context,
-        builder: (_) => _BillPreviewDialog(bill: bill),
-      );
+  void _showBillDialog(Bill bill) {
+    showDialog(
+      context: context,
+      builder: (_) => _BillPreviewDialog(bill: bill),
+      animationStyle: AnimationStyle(
+        duration: Duration(milliseconds: 300),
+      ),
+    ).then((_) {
+      _searchFocus.requestFocus();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -150,6 +159,7 @@ class _POSScreenState extends State<POSScreen> {
                 child: TextField(
                   controller: _searchCtrl,
                   autofocus: true,
+                  focusNode: _searchFocus,
                   decoration: const InputDecoration(
                     hintText: 'Search medicine to add…',
                     prefixIcon: Icon(Icons.search, size: 18),
