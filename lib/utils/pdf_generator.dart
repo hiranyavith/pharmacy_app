@@ -82,11 +82,11 @@ class PdfGenerator {
               pw.Text(
                 bill.paymentType == PaymentType.card ? 'CARD' : 'CASH',
                 style: pw.TextStyle(
-                    fontSize: 7.5,
+                    fontSize: 8,
                     fontWeight: pw.FontWeight.bold,
                     color: bill.paymentType == PaymentType.card
-                        ? PdfColors.blue800
-                        : PdfColors.green800),
+                        ? PdfColors.black
+                        : PdfColors.black),
               ),
             ]),
 
@@ -114,14 +114,19 @@ class PdfGenerator {
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(item.medName.toUpperCase(),
-                          style: const pw.TextStyle(fontSize: 8)),
+                          style: pw.TextStyle(
+                              fontSize: 8,
+                              color: PdfColors.black,
+                              fontWeight: pw.FontWeight.bold)),
                       pw.Row(children: [
                         pw.Expanded(
                             flex: 5,
                             child: pw.Text(
                               '  ${item.quantity} x ${fmt.format(item.unitPrice)}',
-                              style: const pw.TextStyle(
-                                  fontSize: 7.5, color: PdfColors.grey700),
+                              style: pw.TextStyle(
+                                  fontSize: 7.5,
+                                  color: PdfColors.black,
+                                  fontStyle: pw.FontStyle.italic),
                             )),
                         pw.Expanded(
                             flex: 3,
@@ -186,7 +191,7 @@ class PdfGenerator {
                         style: pw.TextStyle(
                             fontSize: 8,
                             fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.blue800)),
+                            color: PdfColors.black)),
                   ],
                 ],
               ),
@@ -205,7 +210,7 @@ class PdfGenerator {
                 pw.SizedBox(height: 2),
                 pw.Text('Please keep this receipt for returns.',
                     style: const pw.TextStyle(
-                        fontSize: 7, color: PdfColors.grey700)),
+                        fontSize: 8, color: PdfColors.black)),
                 pw.SizedBox(height: 28), // feed/cut space
               ]),
             ),
