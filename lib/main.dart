@@ -8,13 +8,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  WindowOptions windowOptions = WindowOptions(
+  WindowOptions windowOptions = const WindowOptions(
     fullScreen: false,
     center: true,
     backgroundColor: Colors.transparent,
     titleBarStyle: TitleBarStyle.normal,
-
-
   );
 
   
