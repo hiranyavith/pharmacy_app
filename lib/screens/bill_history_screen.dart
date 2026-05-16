@@ -318,8 +318,22 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                             ],
                           ),
                           child: Column(children: [
-                            _TotalLine('Payment Type',
-                                _selected!.paymentType.toString().split('.').last.toUpperCase(), color: _selected!.paymentType.toString().split('.').last == "cash" ?AppTheme.success : AppTheme.textMain,bold: true,),
+                            _TotalLine(
+                              'Payment Type',
+                              _selected!.paymentType
+                                  .toString()
+                                  .split('.')
+                                  .last
+                                  .toUpperCase(),
+                              color: _selected!.paymentType
+                                          .toString()
+                                          .split('.')
+                                          .last ==
+                                      "cash"
+                                  ? AppTheme.success
+                                  : AppTheme.textMain,
+                              bold: true,
+                            ),
                             _TotalLine(
                                 'Customer Name',
                                 _selected!.customerName.isEmpty

@@ -1,10 +1,12 @@
 // lib/services/auth_service.dart
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../db/db_helper.dart';
 
 class AuthService {
   static String? _loggedInUser;
   static String? get currentUser => _loggedInUser;
-  static bool    get isLoggedIn  => _loggedInUser != null;
+  static bool get isLoggedIn => _loggedInUser != null;
 
   static Future<bool> login(String username, String password) async {
     final rows = await DBHelper.instance.query(
@@ -18,5 +20,9 @@ class AuthService {
     return false;
   }
 
-  static void logout() => _loggedInUser = null;
+  static void logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    _loggedInUser = null;
+  }
 }

@@ -1,5 +1,6 @@
 // lib/screens/login_screen.dart
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../utils/app_theme.dart';
 import 'dashboard_screen.dart';
@@ -13,19 +14,29 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _userCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
-  bool _loading   = false;
-  bool _obscure   = true;
+  bool _loading = false;
+  bool _obscure = true;
   String? _error;
 
+  Future<void> saveLogin(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', true);
+    await prefs.setString('username', username);
+  }
+
   Future<void> _login() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final ok = await AuthService.login(
-        _userCtrl.text.trim(), _passCtrl.text.trim());
+      final ok =
+          await AuthService.login(_userCtrl.text.trim(), _passCtrl.text.trim());
       if (!mounted) return;
       if (ok) {
-        Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => const DashboardScreen()));
+        await saveLogin(_userCtrl.text.trim());
+        Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (_) => const DashboardScreen()));
       } else {
         setState(() => _error = 'Invalid username or password.');
       }
@@ -47,9 +58,12 @@ class _LoginScreenState extends State<LoginScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 24, offset: const Offset(0, 8))],
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8))
+            ],
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             // Logo area
@@ -64,8 +78,10 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 20),
             const Text('Health Hub Pharmacy System',
-                style: TextStyle(fontSize: 22,
-                    fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textMain)),
             const SizedBox(height: 4),
             const Text('Admin Login',
                 style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
@@ -90,8 +106,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 labelText: 'Password',
                 prefixIcon: const Icon(Icons.lock_outline),
                 suffixIcon: IconButton(
-                  icon: Icon(_obscure
-                      ? Icons.visibility_off : Icons.visibility),
+                  icon:
+                      Icon(_obscure ? Icons.visibility_off : Icons.visibility),
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
@@ -110,9 +126,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Icon(Icons.error_outline,
                       color: AppTheme.danger, size: 18),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(_error!,
-                      style: const TextStyle(
-                          color: AppTheme.danger, fontSize: 13))),
+                  Expanded(
+                      child: Text(_error!,
+                          style: const TextStyle(
+                              color: AppTheme.danger, fontSize: 13))),
                 ]),
               ),
             ],
@@ -124,12 +141,14 @@ class _LoginScreenState extends State<LoginScreen> {
               child: ElevatedButton(
                 onPressed: _loading ? null : _login,
                 child: _loading
-                    ? const SizedBox(width: 22, height: 22,
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
                         child: CircularProgressIndicator(
                             color: Colors.white, strokeWidth: 2.5))
                     : const Text('Login',
-                        style: TextStyle(fontSize: 15,
-                            fontWeight: FontWeight.w600)),
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600)),
               ),
             ),
 
