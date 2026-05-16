@@ -207,11 +207,8 @@ class PdfGenerator {
                 pw.Text('Thank you come again!',
                     style: pw.TextStyle(
                         fontSize: 8, fontStyle: pw.FontStyle.italic)),
-                pw.SizedBox(height: 2),
-                pw.Text('Please keep this receipt for returns.',
-                    style: const pw.TextStyle(
-                        fontSize: 8, color: PdfColors.black)),
-                pw.SizedBox(height: 28), // feed/cut space
+
+                pw.SizedBox(height: 15), // feed/cut space
               ]),
             ),
           ],

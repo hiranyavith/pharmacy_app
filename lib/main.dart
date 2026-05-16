@@ -29,7 +29,7 @@ void main() async {
   bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
   String serial_number = await getMotherboardSerial();
   print('Motherboard Serial: $serial_number');
-  String realSerial = '/FW7RH93/CNCMC001180677/';
+  String realSerial = 'PHDKN00WBC35FB';
   if (serial_number != realSerial) {
     print('Unauthorized device. Exiting app.');
     exit(0);
