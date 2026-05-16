@@ -1,4 +1,6 @@
 // lib/main.dart
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:pharmacy_app/screens/dashboard_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -25,7 +27,39 @@ void main() async {
 
   final prefs = await SharedPreferences.getInstance();
   bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  String serial_number = await getMotherboardSerial();
+  print('Motherboard Serial: $serial_number');
+  String realSerial = '/FW7RH93/CNCMC001180677/';
+  if (serial_number != realSerial) {
+    print('Unauthorized device. Exiting app.');
+    exit(0);
+  }
   runApp(PharmacyApp(isLoggedIn: isLoggedIn));
+}
+
+Future<String> getMotherboardSerial() async {
+  try {
+    final result = await Process.run(
+      'wmic',
+      ['baseboard', 'get', 'serialnumber'],
+    );
+
+    final output = result.stdout.toString();
+
+    final lines = output
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    if (lines.length >= 2) {
+      return lines[1];
+    }
+
+    return 'Unknown';
+  } catch (e) {
+    return 'Error';
+  }
 }
 
 class PharmacyApp extends StatelessWidget {
