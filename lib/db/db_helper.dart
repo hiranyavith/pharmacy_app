@@ -14,6 +14,7 @@ class DBHelper {
   static const String _password = 'Inter@357#%&';
   static const String _db       = 'pharmacy_db';
 
+
   Future<MySQLConnection> get connection async {
     if (_conn != null && _conn!.connected) return _conn!;
     _conn = await MySQLConnection.createConnection(
