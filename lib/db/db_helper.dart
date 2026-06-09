@@ -11,7 +11,7 @@ class DBHelper {
   static const String _host     = 'localhost';
   static const int    _port     = 3306;
   static const String _user     = 'root';
-  static const String _password = 'MYsql1123318@#"';
+  static const String _password = 'Mrcracky6000';
   static const String _db       = 'pharmacy_db';
 
 
