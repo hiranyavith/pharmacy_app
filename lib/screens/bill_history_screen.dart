@@ -39,6 +39,211 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
       });
   }
 
+  Future<void> _openBillEditor(Bill bill) async {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title:  Text('Edit Bill #${bill.invoiceNo}'),
+          content: Column(children: [
+                    // Table header
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
+                      color: AppTheme.primary.withOpacity(0.04),
+                      child: const Row(children: [
+                        Expanded(child: Text('Medicine',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                                color: AppTheme.textSub))),
+                        SizedBox(width: 160,
+                            child: Text('Quantity',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    color: AppTheme.textSub))),
+                        SizedBox(width: 90,
+                            child: Text('Unit Price',
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    color: AppTheme.textSub))),
+                        SizedBox(width: 90,
+                            child: Text('Total',
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    color: AppTheme.textSub))),
+                        SizedBox(width: 36),
+                      ]),
+                    ),
+                    const Divider(height: 1),
+                    // // Cart rows
+                    // Expanded(
+                    //   child: ListView.separated(
+                    //     padding: const EdgeInsets.symmetric(vertical: 6),
+                    //     itemCount: bill.length,
+                    //     separatorBuilder: (_, __) =>
+                    //         const Divider(height: 1, indent: 20),
+                    //     itemBuilder: (_, i) {
+                    //       final item = bill.items[i];
+                    //       final ctrl = _qtyControllers[item.medName] ?? TextEditingController(
+                    //               text: '${item.quantity}');
+                    //       return Padding(
+                    //         padding: const EdgeInsets.symmetric(
+                    //             horizontal: 16, vertical: 8),
+                    //         child: Row(
+                    //           crossAxisAlignment: CrossAxisAlignment.center,
+                    //           children: [
+                    //             // Medicine info
+                    //             Expanded(child: Column(
+                    //               crossAxisAlignment: CrossAxisAlignment.start,
+                    //               children: [
+                    //                 Text(item.medName,
+                    //                     style: const TextStyle(
+                    //                         fontWeight: FontWeight.w600,
+                    //                         fontSize: 13)),
+                    //                 const SizedBox(height: 2),
+                    //                 Text('Stock: ${item.quantity} available',
+                    //                     style: const TextStyle(
+                    //                         color: AppTheme.textSub,
+                    //                         fontSize: 11)),
+                    //               ],
+                    //             )),
+
+                    //             // ── Qty Stepper + Input ──
+                    //             Container(
+                    //               width: 160,
+                    //               height: 38,
+                    //               decoration: BoxDecoration(
+                    //                 border: Border.all(
+                    //                     color: Colors.grey[300]!),
+                    //                 borderRadius: BorderRadius.circular(8),
+                    //                 color: Colors.white,
+                    //               ),
+                    //               child: Row(children: [
+                    //                 // Minus button
+                    //                 _StepperBtn(
+                    //                   icon: Icons.remove,
+                    //                   enabled: item.quantity > 1,
+                    //                   isLeft: true,
+                    //                   onTap: () => _stepQty(i, -1),
+                    //                 ),
+
+                    //                 // Qty text input
+                    //                 Expanded(
+                    //                   child: TextField(
+                    //                     controller: ctrl,
+                    //                     textAlign: TextAlign.center,
+                    //                     keyboardType: TextInputType.number,
+                    //                     inputFormatters: [
+                    //                       FilteringTextInputFormatter
+                    //                           .digitsOnly,
+                    //                       LengthLimitingTextInputFormatter(4),
+                    //                     ],
+                    //                     style: const TextStyle(
+                    //                       fontSize: 15,
+                    //                       fontWeight: FontWeight.bold,
+                    //                       color: AppTheme.textMain,
+                    //                     ),
+                    //                     decoration: const InputDecoration(
+                    //                       border: InputBorder.none,
+                    //                       enabledBorder: InputBorder.none,
+                    //                       focusedBorder: InputBorder.none,
+                    //                       isDense: true,
+                    //                       contentPadding:
+                    //                           EdgeInsets.symmetric(
+                    //                               vertical: 8),
+                    //                     ),
+                    //                     onChanged: (v) => _onQtyInput(i, v),
+                    //                     onSubmitted: (v) {
+                    //                       if (v.isEmpty) {
+                    //                         ctrl.text = '${item.quantity}';
+                    //                       }
+                    //                     },
+                    //                   ),
+                    //                 ),
+
+                    //                 // Plus button
+                    //                 _StepperBtn(
+                    //                   icon: Icons.add,
+                    //                   enabled: item.quantity <
+                    //                       item.medicine.stock,
+                    //                   isLeft: false,
+                    //                   onTap: () => _stepQty(i, 1),
+                    //                 ),
+                    //               ]),
+                    //             ),
+
+                    //             // Unit price
+                    //             SizedBox(
+                    //               width: 90,
+                    //               child: Text(
+                    //                 'Rs. ${fmt.format(item.medicine.price)}',
+                    //                 textAlign: TextAlign.right,
+                    //                 style: const TextStyle(
+                    //                     fontSize: 12,
+                    //                     color: AppTheme.textSub),
+                    //               ),
+                    //             ),
+
+                    //             // Line total
+                    //             SizedBox(
+                    //               width: 90,
+                    //               child: Text(
+                    //                 'Rs. ${fmt.format(item.lineTotal)}',
+                    //                 textAlign: TextAlign.right,
+                    //                 style: const TextStyle(
+                    //                     fontWeight: FontWeight.bold,
+                    //                     fontSize: 13,
+                    //                     color: AppTheme.primary),
+                    //               ),
+                    //             ),
+
+                    //             // Remove
+                    //             SizedBox(
+                    //               width: 36,
+                    //               child: IconButton(
+                    //                 icon: const Icon(
+                    //                     Icons.delete_outline,
+                    //                     size: 17,
+                    //                     color: AppTheme.danger),
+                    //                 onPressed: () => (),
+                    //                 padding: EdgeInsets.zero,
+                    //                 tooltip: 'Remove',
+                    //               ),
+                    //             ),
+                    //           ],
+                    //         ),
+                    //       );
+                    //     },
+                    //   ),
+                    // ),
+                  ]),
+          actions: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel')),
+                ElevatedButton(
+                    onPressed: () {
+                      // Handle save logic here
+                    },
+                    child: const Text('Save'))
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _selectBill(Bill bill) async {
     final items = await _svc.getBillItems(bill.id);
     if (mounted) setState(() => _selected = bill..items = items);
@@ -194,6 +399,14 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                           icon: const Icon(Icons.print, size: 16),
                           label: const Text('Print'),
                           onPressed: () => PdfGenerator.printBill(_selected!),
+                        ),
+                        const SizedBox(
+                          width: 5.0,
+                        ),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.edit, size: 16),
+                          label: const Text('Edit'),
+                          onPressed: () => _openBillEditor(_selected!),
                         ),
                       ]),
                       const SizedBox(height: 20),
