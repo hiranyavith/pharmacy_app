@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:pharmacy_app/components/stepperBtn.dart';
 import '../models/medicine.dart';
 import '../models/bill.dart';
 import '../services/medicine_service.dart';
@@ -406,7 +407,7 @@ class _POSScreenState extends State<POSScreen> {
                                   ),
                                   child: Row(children: [
                                     // Minus button
-                                    _StepperBtn(
+                                    StepperBtn(
                                       icon: Icons.remove,
                                       enabled: item.quantity > 1,
                                       isLeft: true,
@@ -448,7 +449,7 @@ class _POSScreenState extends State<POSScreen> {
                                     ),
 
                                     // Plus button
-                                    _StepperBtn(
+                                    StepperBtn(
                                       icon: Icons.add,
                                       enabled: item.quantity <
                                           item.medicine.stock,
@@ -804,53 +805,7 @@ class _POSScreenState extends State<POSScreen> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Stepper button (left/right sides of qty input)
-// ─────────────────────────────────────────────────────────────
-class _StepperBtn extends StatelessWidget {
-  final IconData     icon;
-  final bool         enabled, isLeft;
-  final VoidCallback onTap;
-  const _StepperBtn({
-    required this.icon,
-    required this.enabled,
-    required this.isLeft,
-    required this.onTap,
-  });
 
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: enabled ? onTap : null,
-    child: Container(
-      width: 36,
-      height: double.infinity,
-      decoration: BoxDecoration(
-        color: enabled
-            ? AppTheme.primary.withOpacity(0.06)
-            : Colors.grey[50],
-        borderRadius: BorderRadius.only(
-          topLeft:     Radius.circular(isLeft ? 7 : 0),
-          bottomLeft:  Radius.circular(isLeft ? 7 : 0),
-          topRight:    Radius.circular(isLeft ? 0 : 7),
-          bottomRight: Radius.circular(isLeft ? 0 : 7),
-        ),
-        border: Border(
-          right: isLeft
-              ? BorderSide(color: Colors.grey[300]!)
-              : BorderSide.none,
-          left: isLeft
-              ? BorderSide.none
-              : BorderSide(color: Colors.grey[300]!),
-        ),
-      ),
-      child: Icon(
-        icon,
-        size: 16,
-        color: enabled ? AppTheme.primary : Colors.grey[300],
-      ),
-    ),
-  );
-}
 
 // ─────────────────────────────────────────────────────────────
 // Quick cash chip

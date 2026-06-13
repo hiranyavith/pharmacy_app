@@ -87,7 +87,6 @@ class BillingService {
                 medName: c.medicine.name,
                 quantity: c.quantity,
                 unitPrice: c.medicine.price,
-                lineTotal: c.lineTotal,
               ))
           .toList(),
     );
@@ -128,5 +127,79 @@ class BillingService {
       [billId],
     );
     return rows.map(BillItem.fromMap).toList();
+  }
+
+  Future<void> updateBill(Bill bill) async {
+    // 1. Fetch the current (pre-edit) items straight from the DB
+    final oldItems = await getBillItems(bill.id);
+
+    // Build a quick lookup: medicineId → old quantity
+    final Map<int, int> oldQtyByMedId = {
+      for (final old in oldItems) old.medicineId: old.quantity,
+    };
+
+    // Build a lookup for the NEW items too
+    final Map<int, BillItem> newItemByMedId = {
+      for (final n in bill.items) n.medicineId: n,
+    };
+
+    // 2 & 3. Reconcile stock for every OLD item
+    for (final old in oldItems) {
+      final newItem = newItemByMedId[old.medicineId];
+
+      if (newItem == null) {
+        // Item was REMOVED → restore the full original qty back to stock
+        await _med.restoreStock(old.medicineId, old.quantity);
+      } else {
+        // Item still present → restore old qty then deduct new qty
+        final diff = newItem.quantity - old.quantity; // positive = more sold
+        if (diff > 0) {
+          // Quantity increased → deduct extra from stock
+          await _med.reduceStock(old.medicineId, diff);
+        } else if (diff < 0) {
+          // Quantity decreased → return the difference to stock
+          await _med.restoreStock(old.medicineId, diff.abs());
+        }
+        // diff == 0 → no stock change needed
+      }
+    }
+
+    // Recalculate totals from the new items (don't trust what the UI passed)
+    final subtotal =
+        bill.items.fold(0.0, (s, i) => s + i.unitPrice * i.quantity);
+    final total = subtotal - bill.discount;
+
+    // 4. Replace all bill_items rows
+    await _db.execute(
+      'DELETE FROM bill_items WHERE bill_id = :p0',
+      [bill.id],
+    );
+
+    for (final item in bill.items) {
+      final lineTotal = item.unitPrice * item.quantity;
+      await _db.execute(
+        '''INSERT INTO bill_items
+             (bill_id, medicine_id, med_name, quantity, unit_price, line_total)
+           VALUES (:p0, :p1, :p2, :p3, :p4, :p5)''',
+        [
+          bill.id,
+          item.medicineId,
+          item.medName,
+          item.quantity,
+          item.unitPrice,
+          lineTotal,
+        ],
+      );
+    }
+
+    // 5. Update the bill header
+    await _db.execute(
+      '''UPDATE bills
+         SET subtotal     = :p0,
+             discount     = :p1,
+             total        = :p2
+         WHERE id         = :p3''',
+      [subtotal, bill.discount, total, bill.id],
+    );
   }
 }
