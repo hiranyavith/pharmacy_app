@@ -87,4 +87,11 @@ class MedicineService {
       [qty, id],
     );
   }
+
+  Future<void> restoreStock(int medicineId, int qty) async {
+  await _db.execute(
+    'UPDATE medicines SET stock = stock + :p0 WHERE id = :p1',
+    [qty, medicineId],
+  );
+}
 }
