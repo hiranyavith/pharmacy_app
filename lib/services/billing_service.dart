@@ -8,12 +8,29 @@ class BillingService {
   final _med = MedicineService();
 
   // ── Generate unique invoice number ────
-  String _generateInvoiceNo() {
+  Future<String> _generateInvoiceNo() async {
     final now = DateTime.now();
-    final ts = '${now.year}${now.month.toString().padLeft(2, '0')}'
-        '${now.day.toString().padLeft(2, '0')}'
-        '${now.millisecondsSinceEpoch % 10000}';
-    return 'INV-$ts';
+    final datePart =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
+    final rows = await _db.query(
+      '''
+      SELECT CAST(
+               SUBSTRING_INDEX(invoice_no, '-', -1)
+             AS UNSIGNED) AS seq
+      FROM   bills
+      WHERE  invoice_no LIKE :p0
+      ORDER  BY seq DESC
+      LIMIT  1
+      ''',
+      ['INV-$datePart-%'],
+    );
+
+    final lastSeq = rows.isNotEmpty
+        ? (int.tryParse(rows.first['seq']?.toString() ?? '0') ?? 0)
+        : 0;
+
+    final nextSeq = (lastSeq + 1).toString().padLeft(4, '0');
+    return 'INV-$datePart$nextSeq';
   }
 
   // ── Create bill from cart ─────────────
@@ -25,7 +42,7 @@ class BillingService {
     PaymentType paymentType = PaymentType.cash,
     String customerName = '',
   }) async {
-    final invoiceNo = _generateInvoiceNo();
+    final invoiceNo = await _generateInvoiceNo();
     final subtotal = cart.fold(0.0, (s, i) => s + i.lineTotal);
     final total = subtotal - discount;
     change = given > 0 ? (given - total).clamp(0, double.infinity) : 0.0;
