@@ -6,10 +6,13 @@ enum PaymentType { cash, card }
 class CartItem {
   final Medicine medicine;
   int quantity;
+  double? sellingPrice; // ← NEW: null means use medicine.price
 
-  CartItem({required this.medicine, this.quantity = 1});
+  CartItem({required this.medicine, this.quantity = 1, this.sellingPrice});
 
-  double get lineTotal => medicine.price * quantity;
+  // Use override price if set, otherwise fall back to medicine price
+  double get effectivePrice => sellingPrice ?? medicine.price;
+  double get lineTotal => effectivePrice * quantity;
 }
 
 class BillItem {
@@ -17,10 +20,10 @@ class BillItem {
   final int billId;
   final int medicineId;
   final String medName;
-  int quantity;           // mutable so the edit dialog stepper can update it
-  final double unitPrice;
+  int quantity;
+  final double unitPrice;   // the ACTUAL price used (may differ from medicine.price)
+  final double mrp;         // ← NEW: original medicine price, for reference
 
-  // ── Computed — never stored as a field so it's always consistent ──
   double get lineTotal => unitPrice * quantity;
 
   BillItem({
@@ -30,29 +33,27 @@ class BillItem {
     required this.medName,
     required this.quantity,
     required this.unitPrice,
+    this.mrp = 0,
   });
 
   factory BillItem.fromMap(Map<String, dynamic> m) => BillItem(
-        id: int.tryParse(m['id']?.toString() ?? '0') ?? 0,
-        billId: int.tryParse(m['bill_id']?.toString() ?? '0') ?? 0,
-        medicineId:
-            int.tryParse(m['medicine_id']?.toString() ?? '0') ?? 0,
-        medName: m['med_name'] ?? '',
-        quantity:
-            int.tryParse(m['quantity']?.toString() ?? '0') ?? 0,
-        unitPrice:
-            double.tryParse(m['unit_price']?.toString() ?? '0') ?? 0,
-        // line_total is ignored on read — always derived from unitPrice * quantity
+        id:          int.tryParse(m['id']?.toString()          ?? '0') ?? 0,
+        billId:      int.tryParse(m['bill_id']?.toString()     ?? '0') ?? 0,
+        medicineId:  int.tryParse(m['medicine_id']?.toString() ?? '0') ?? 0,
+        medName:     m['med_name'] ?? '',
+        quantity:    int.tryParse(m['quantity']?.toString()    ?? '0') ?? 0,
+        unitPrice:   double.tryParse(m['unit_price']?.toString() ?? '0') ?? 0,
+        mrp:         double.tryParse(m['mrp']?.toString()       ?? '0') ?? 0,
       );
 
-  /// Shallow copy with optional overrides — handy when building edited lists.
-  BillItem copyWith({int? quantity}) => BillItem(
-        id: id,
-        billId: billId,
+  BillItem copyWith({int? quantity, double? unitPrice}) => BillItem(
+        id:         id,
+        billId:     billId,
         medicineId: medicineId,
-        medName: medName,
-        quantity: quantity ?? this.quantity,
-        unitPrice: unitPrice,
+        medName:    medName,
+        quantity:   quantity  ?? this.quantity,
+        unitPrice:  unitPrice ?? this.unitPrice,
+        mrp:        mrp,
       );
 }
 
@@ -84,24 +85,18 @@ class Bill {
   });
 
   factory Bill.fromMap(Map<String, dynamic> m) => Bill(
-        id: int.tryParse(m['id']?.toString() ?? '0') ?? 0,
-        invoiceNo: m['invoice_no'] ?? '',
-        subtotal:
-            double.tryParse(m['subtotal']?.toString() ?? '0') ?? 0,
-        discount:
-            double.tryParse(m['discount']?.toString() ?? '0') ?? 0,
-        total: double.tryParse(m['total']?.toString() ?? '0') ?? 0,
-        given:
-            double.tryParse(m['given_price']?.toString() ?? '0') ?? 0,
-        change:
-            double.tryParse(m['change_price']?.toString() ?? '0') ?? 0,
-        paymentType: (m['payment_type'] ?? 'cash') == 'card'
-            ? PaymentType.card
-            : PaymentType.cash,
+        id:           int.tryParse(m['id']?.toString()        ?? '0') ?? 0,
+        invoiceNo:    m['invoice_no'] ?? '',
+        subtotal:     double.tryParse(m['subtotal']?.toString()    ?? '0') ?? 0,
+        discount:     double.tryParse(m['discount']?.toString()    ?? '0') ?? 0,
+        total:        double.tryParse(m['total']?.toString()       ?? '0') ?? 0,
+        given:        double.tryParse(m['given_price']?.toString() ?? '0') ?? 0,
+        change:       double.tryParse(m['change_price']?.toString()?? '0') ?? 0,
+        paymentType:  (m['payment_type'] ?? 'cash') == 'card'
+                        ? PaymentType.card : PaymentType.cash,
         customerName: m['customer_name'] ?? '',
-        createdAt:
-            DateTime.tryParse(m['created_at']?.toString() ?? '') ??
-                DateTime.now(),
+        createdAt:    DateTime.tryParse(m['created_at']?.toString() ?? '') ??
+                        DateTime.now(),
       );
 
   Bill copyWith({
@@ -109,18 +104,17 @@ class Bill {
     double? discount,
     double? subtotal,
     double? total,
-  }) =>
-      Bill(
-        id: id,
-        invoiceNo: invoiceNo,
-        createdAt: createdAt,
-        given: given,
-        change: change,
-        paymentType: paymentType,
-        customerName: customerName,
-        items: items ?? this.items,
-        discount: discount ?? this.discount,
-        subtotal: subtotal ?? this.subtotal,
-        total: total ?? this.total,
-      );
+  }) => Bill(
+    id:           id,
+    invoiceNo:    invoiceNo,
+    createdAt:    createdAt,
+    given:        given,
+    change:       change,
+    paymentType:  paymentType,
+    customerName: customerName,
+    items:        items    ?? this.items,
+    discount:     discount ?? this.discount,
+    subtotal:     subtotal ?? this.subtotal,
+    total:        total    ?? this.total,
+  );
 }
