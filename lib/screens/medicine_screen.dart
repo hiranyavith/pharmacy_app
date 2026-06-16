@@ -1,10 +1,12 @@
-// lib/screens/medicine_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/medicine.dart';
 import '../services/medicine_service.dart';
+import '../services/barcode_scanner_service.dart';
 import '../utils/app_theme.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
 class MedicineScreen extends StatefulWidget {
   const MedicineScreen({super.key});
   @override
@@ -17,8 +19,64 @@ class _MedicineScreenState extends State<MedicineScreen> {
   List<Medicine> _meds    = [];
   bool           _loading = true;
 
+  StreamSubscription<String>? _barcodeSub;
+
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+
+    // Listen for USB scanner barcodes while this screen is active
+    _barcodeSub = BarcodeScannerService.instance.barcodes.listen(_onBarcode);
+  }
+
+  @override
+  void dispose() {
+    _barcodeSub?.cancel();
+    super.dispose();
+  }
+
+  // ── Called whenever the USB scanner fires a complete code ─────────────────
+  Future<void> _onBarcode(String code) async {
+    if (!mounted) return;
+
+    // Fill search box and search
+    _searchCtrl.text = code;
+    setState(() => _loading = true);
+
+    final med = await _svc.getByBarcode(code);
+    if (!mounted) return;
+
+    if (med != null) {
+      // Found — show it in the list
+      await _load(code);
+    } else {
+      // Not found — offer to add
+      setState(() => _loading = false);
+      final add = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Barcode not found'),
+          content: Text(
+              'No medicine is registered with barcode "$code".\n'
+              'Would you like to add a new medicine with this barcode?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Add Medicine')),
+          ],
+        ),
+      );
+      if (add == true && mounted) {
+        // Pre-fill barcode in the Add form
+        _openForm(Medicine(
+            name: '', category: '', price: 0, stock: 0, barcode: code));
+      }
+    }
+  }
 
   Future<void> _load([String q = '']) async {
     setState(() => _loading = true);
@@ -60,14 +118,13 @@ class _MedicineScreenState extends State<MedicineScreen> {
     final dateFmt = DateFormat('dd MMM yyyy');
     final fmt     = NumberFormat('#,##0.00');
 
-    // ── Inventory totals (computed from current list) ──
     final totalItems    = _meds.length;
     final totalUnits    = _meds.fold(0,   (s, m) => s + m.stock);
     final totalValue    = _meds.fold(0.0, (s, m) => s + m.totalValue);
     final lowStockCount = _meds.where((m) => m.isLowStock).length;
 
     return Column(children: [
-      // ── Top bar ────────────────────────
+      // ── Top bar ────────────────────────────────────────────────────────────
       Container(
         color: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -76,20 +133,42 @@ class _MedicineScreenState extends State<MedicineScreen> {
               style: TextStyle(fontSize: 18,
                   fontWeight: FontWeight.bold, color: AppTheme.textMain)),
           const Spacer(),
-          // Search
+
+          // USB scanner status badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.success.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppTheme.success.withOpacity(0.3)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.usb, size: 13, color: AppTheme.success),
+              const SizedBox(width: 5),
+              Text('USB Scanner Ready',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.success,
+                      fontWeight: FontWeight.w500)),
+            ]),
+          ),
+          const SizedBox(width: 12),
+
+          // Manual search
           SizedBox(
             width: 260,
             child: TextField(
               controller: _searchCtrl,
               decoration: const InputDecoration(
-                hintText: 'Search by name or category…',
+                hintText: 'Search name, category or barcode…',
                 prefixIcon: Icon(Icons.search, size: 18),
                 isDense: true,
               ),
-              onChanged: (v) => _load(v),
+              onChanged: _load,
             ),
           ),
           const SizedBox(width: 12),
+
           ElevatedButton.icon(
             onPressed: () => _openForm(),
             icon: const Icon(Icons.add, size: 18),
@@ -99,7 +178,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
       ),
       const Divider(height: 1),
 
-      // ── Table ──────────────────────────
+      // ── Table ──────────────────────────────────────────────────────────────
       Expanded(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -115,6 +194,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
                         columns: const [
                           DataColumn(label: Text('Name')),
                           DataColumn(label: Text('Category')),
+                          DataColumn(label: Text('Barcode')),
                           DataColumn(label: Text('Price (Rs.)')),
                           DataColumn(label: Text('Stock')),
                           DataColumn(label: Text('Warn Limit')),
@@ -123,12 +203,12 @@ class _MedicineScreenState extends State<MedicineScreen> {
                           DataColumn(label: Text('Actions')),
                         ],
                         rows: _meds.map((m) {
-                          Color stockColor = AppTheme.textMain;
-                          if (m.isLowStock) stockColor = AppTheme.danger;
-
+                          final stockColor =
+                              m.isLowStock ? AppTheme.danger : AppTheme.textMain;
                           return DataRow(cells: [
                             DataCell(Text(m.name,
-                                style: const TextStyle(fontWeight: FontWeight.w500))),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w500))),
                             DataCell(Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 3),
@@ -140,7 +220,20 @@ class _MedicineScreenState extends State<MedicineScreen> {
                                   style: const TextStyle(
                                       fontSize: 12, color: AppTheme.primary)),
                             )),
-                            DataCell(Text('Rs. ${m.price.toStringAsFixed(2)}')),
+                            DataCell(m.barcode == null || m.barcode!.isEmpty
+                                ? const Text('—',
+                                    style: TextStyle(color: AppTheme.textSub))
+                                : Row(children: [
+                                    const Icon(Icons.qr_code,
+                                        size: 14, color: AppTheme.textSub),
+                                    const SizedBox(width: 4),
+                                    Text(m.barcode!,
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            fontFamily: 'monospace')),
+                                  ])),
+                            DataCell(
+                                Text('Rs. ${m.price.toStringAsFixed(2)}')),
                             DataCell(Row(children: [
                               Text('${m.stock}',
                                   style: TextStyle(
@@ -152,7 +245,6 @@ class _MedicineScreenState extends State<MedicineScreen> {
                                     size: 14, color: AppTheme.warning),
                               ],
                             ])),
-                            // Warning limit badge
                             DataCell(Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 3),
@@ -160,24 +252,19 @@ class _MedicineScreenState extends State<MedicineScreen> {
                                 color: AppTheme.warning.withOpacity(0.10),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Text(
-                                '≤ ${m.stockWarningLimit}',
+                              child: Text('≤ ${m.stockWarningLimit}',
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.warning,
+                                      fontWeight: FontWeight.w600)),
+                            )),
+                            DataCell(Text('Rs. ${fmt.format(m.totalValue)}',
                                 style: const TextStyle(
-                                    fontSize: 12, color: AppTheme.warning,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            )),
-                            // Per-item stock value
-                            DataCell(Text(
-                              'Rs. ${fmt.format(m.totalValue)}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textMain),
-                            )),
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.textMain))),
                             DataCell(m.expiryDate == null
                                 ? const Text('—')
-                                : Text(
-                                    dateFmt.format(m.expiryDate!),
+                                : Text(dateFmt.format(m.expiryDate!),
                                     style: TextStyle(
                                       color: m.isExpiringSoon
                                           ? AppTheme.danger
@@ -185,8 +272,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
                                       fontWeight: m.isExpiringSoon
                                           ? FontWeight.w600
                                           : FontWeight.normal,
-                                    ),
-                                  )),
+                                    ))),
                             DataCell(Row(children: [
                               IconButton(
                                 icon: const Icon(Icons.edit_outlined,
@@ -208,79 +294,52 @@ class _MedicineScreenState extends State<MedicineScreen> {
                   ),
       ),
 
-      // ── Inventory Summary Footer ────────
+      // ── Inventory Summary Footer ────────────────────────────────────────────
       if (!_loading && _meds.isNotEmpty)
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
             border: Border(top: BorderSide(color: Colors.grey[200]!)),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8, offset: const Offset(0, -2)),
-            ],
+            boxShadow: [BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8, offset: const Offset(0, -2))],
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           child: Row(children: [
-            // Label
-            const Icon(Icons.summarize_outlined,
-                size: 16, color: AppTheme.textSub),
+            const Icon(Icons.summarize_outlined, size: 16, color: AppTheme.textSub),
             const SizedBox(width: 6),
             Text(
               _searchCtrl.text.isEmpty
-                  ? 'Inventory Summary'
-                  : 'Filtered Results Summary',
-              style: const TextStyle(
-                  fontSize: 12, color: AppTheme.textSub,
-                  fontWeight: FontWeight.w500),
+                  ? 'Inventory Summary' : 'Filtered Results Summary',
+              style: const TextStyle(fontSize: 12,
+                  color: AppTheme.textSub, fontWeight: FontWeight.w500),
             ),
             const SizedBox(width: 20),
-
-            // Tile: Total Products
-            _FooterTile(
-              label: 'Total Products',
-              value: '$totalItems',
-              icon: Icons.medication_outlined,
-              color: AppTheme.primary,
-            ),
+            _FooterTile(label: 'Total Products', value: '$totalItems',
+                icon: Icons.medication_outlined, color: AppTheme.primary),
             _footerDivider(),
-
-            // Tile: Total Units
-            _FooterTile(
-              label: 'Total Units',
-              value: '$totalUnits',
-              icon: Icons.inventory_2_outlined,
-              color: AppTheme.secondary,
-            ),
+            _FooterTile(label: 'Total Units', value: '$totalUnits',
+                icon: Icons.inventory_2_outlined, color: AppTheme.secondary),
             _footerDivider(),
-
-            // Tile: Low Stock
-            _FooterTile(
-              label: 'Low Stock',
-              value: '$lowStockCount',
-              icon: Icons.warning_amber_outlined,
-              color: lowStockCount > 0 ? AppTheme.warning : AppTheme.textSub,
-            ),
+            _FooterTile(label: 'Low Stock', value: '$lowStockCount',
+                icon: Icons.warning_amber_outlined,
+                color: lowStockCount > 0 ? AppTheme.warning : AppTheme.textSub),
             _footerDivider(),
-
-            // Tile: Total Inventory Value — highlighted
             Expanded(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: AppTheme.primary.withOpacity(0.07),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: AppTheme.primary.withOpacity(0.2)),
+                  border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
                 ),
                 child: Row(children: [
                   const Icon(Icons.account_balance_wallet,
                       size: 18, color: AppTheme.primary),
                   const SizedBox(width: 10),
-                  Column(crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     const Text('Total Inventory Value',
-                        style: TextStyle(
-                            fontSize: 11, color: AppTheme.textSub)),
+                        style: TextStyle(fontSize: 11, color: AppTheme.textSub)),
                     Text('Rs. ${fmt.format(totalValue)}',
                         style: const TextStyle(
                             fontSize: 16,
@@ -296,17 +355,13 @@ class _MedicineScreenState extends State<MedicineScreen> {
   }
 }
 
-// ── Footer helper widgets ─────────────────
+// ── Footer helpers ─────────────────────────────────────────────────────────────
 class _FooterTile extends StatelessWidget {
   final String label, value;
   final IconData icon;
   final Color color;
-  const _FooterTile({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
+  const _FooterTile({required this.label, required this.value,
+      required this.icon, required this.color});
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -314,25 +369,18 @@ class _FooterTile extends StatelessWidget {
       Icon(icon, size: 16, color: color),
       const SizedBox(width: 8),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label,
-            style: const TextStyle(fontSize: 10, color: AppTheme.textSub)),
-        Text(value,
-            style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: color)),
+        Text(label, style: const TextStyle(fontSize: 10, color: AppTheme.textSub)),
+        Text(value, style: TextStyle(
+            fontSize: 15, fontWeight: FontWeight.bold, color: color)),
       ]),
     ]),
   );
 }
 
-Widget _footerDivider() => Container(
-  height: 32,
-  width: 1,
-  color: Colors.grey[200],
-);
+Widget _footerDivider() =>
+    Container(height: 32, width: 1, color: Colors.grey[200]);
 
-// ── Add / Edit form dialog ────────────────
+// ── Add / Edit form dialog ─────────────────────────────────────────────────────
 class _MedicineForm extends StatefulWidget {
   final Medicine? medicine;
   final VoidCallback onSaved;
@@ -342,27 +390,57 @@ class _MedicineForm extends StatefulWidget {
 }
 
 class _MedicineFormState extends State<_MedicineForm> {
-  final _formKey     = GlobalKey<FormState>();
-  final _svc         = MedicineService();
-  late  TextEditingController _name, _cat, _price, _stock, _warnLimit;
+  final _formKey    = GlobalKey<FormState>();
+  final _svc        = MedicineService();
+  final _barcodeFocus = FocusNode();
+
+  late TextEditingController _name, _cat, _price, _stock, _warnLimit, _barcode;
   DateTime? _expiry;
   bool _saving = false;
+  bool _barcodeJustScanned = false; // visual flash feedback
 
-  int    get _stockVal => int.tryParse(_stock.text)     ?? 0;
-  int    get _limitVal => int.tryParse(_warnLimit.text) ?? 10;
-  bool   get _willWarn => _stockVal <= _limitVal && _stockVal >= 0;
+  StreamSubscription<String>? _barcodeSub;
+
+  int  get _stockVal => int.tryParse(_stock.text)     ?? 0;
+  int  get _limitVal => int.tryParse(_warnLimit.text) ?? 10;
+  bool get _willWarn => _stockVal <= _limitVal && _stockVal >= 0;
 
   @override
   void initState() {
     super.initState();
-    final m  = widget.medicine;
+    final m = widget.medicine;
     _name      = TextEditingController(text: m?.name     ?? '');
     _cat       = TextEditingController(text: m?.category ?? '');
-    _price     = TextEditingController(text: m != null ? m.price.toStringAsFixed(2) : '');
-    _stock     = TextEditingController(text: m?.stock.toString() ?? '');
+    _price     = TextEditingController(
+        text: m != null && m.price > 0 ? m.price.toStringAsFixed(2) : '');
+    _stock     = TextEditingController(
+        text: m != null && m.stock > 0 ? m.stock.toString() : '');
     _warnLimit = TextEditingController(
         text: (m?.stockWarningLimit ?? 10).toString());
-    _expiry = m?.expiryDate;
+    _barcode   = TextEditingController(text: m?.barcode ?? '');
+
+    // When a USB scan arrives while the form is open, fill the barcode field
+    // regardless of which field currently has focus.
+    _barcodeSub = BarcodeScannerService.instance.barcodes.listen((code) {
+      if (!mounted) return;
+      setState(() {
+        _barcode.text = code;
+        _barcodeJustScanned = true;
+      });
+      // Flash the field green briefly
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _barcodeJustScanned = false);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _barcodeSub?.cancel();
+    _barcodeFocus.dispose();
+    _name.dispose(); _cat.dispose(); _price.dispose();
+    _stock.dispose(); _warnLimit.dispose(); _barcode.dispose();
+    super.dispose();
   }
 
   Future<void> _save() async {
@@ -372,17 +450,14 @@ class _MedicineFormState extends State<_MedicineForm> {
       id:                widget.medicine?.id,
       name:              _name.text.trim(),
       category:          _cat.text.trim(),
-      price:             double.tryParse(_price.text)     ?? 0,
-      stock:             int.tryParse(_stock.text)        ?? 0,
-      stockWarningLimit: int.tryParse(_warnLimit.text)   ?? 10,
-      expiryDate:        _expiry,
+      price:             double.tryParse(_price.text)   ?? 0,
+      stock:             int.tryParse(_stock.text)      ?? 0,
+      stockWarningLimit: int.tryParse(_warnLimit.text)  ?? 10,
+      barcode: _barcode.text.trim().isEmpty ? null : _barcode.text.trim(),
+      expiryDate: _expiry,
     );
     try {
-      if (widget.medicine == null) {
-        await _svc.add(med);
-      } else {
-        await _svc.update(med);
-      }
+      widget.medicine == null ? await _svc.add(med) : await _svc.update(med);
       if (mounted) {
         Navigator.pop(context);
         showSuccess(context,
@@ -420,161 +495,226 @@ class _MedicineFormState extends State<_MedicineForm> {
         width: 480,
         child: Form(
           key: _formKey,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
 
-            // Name
-            TextFormField(
-              controller: _name,
-              decoration: const InputDecoration(
-                labelText: 'Medicine Name *',
-                prefixIcon: Icon(Icons.medication_outlined, size: 18),
+              // Name
+              TextFormField(
+                controller: _name,
+                decoration: const InputDecoration(
+                  labelText: 'Medicine Name *',
+                  prefixIcon: Icon(Icons.medication_outlined, size: 18),
+                ),
+                validator: (v) => v == null || v.isEmpty ? 'Required' : null,
               ),
-              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-            ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            // Category
-            TextFormField(
-              controller: _cat,
-              decoration: const InputDecoration(
-                labelText: 'Category',
-                prefixIcon: Icon(Icons.category_outlined, size: 18),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Price + Stock row
-            Row(children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _price,
-                  decoration: const InputDecoration(
-                    labelText: 'Price (Rs.) *',
-                    prefixText: 'Rs. ',
-                  ),
-                  keyboardType: TextInputType.number,
-                  validator: (v) => double.tryParse(v ?? '') == null
-                      ? 'Enter valid price' : null,
+              // Category
+              TextFormField(
+                controller: _cat,
+                decoration: const InputDecoration(
+                  labelText: 'Category',
+                  prefixIcon: Icon(Icons.category_outlined, size: 18),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextFormField(
-                  controller: _stock,
-                  decoration: const InputDecoration(
-                    labelText: 'Stock Qty *',
-                    prefixIcon: Icon(Icons.inventory_2_outlined, size: 18),
-                  ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                  validator: (v) => int.tryParse(v ?? '') == null
-                      ? 'Enter valid qty' : null,
-                ),
-              ),
-            ]),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            // ── Stock Warning Limit ──────────
-            Row(children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _warnLimit,
-                  decoration: InputDecoration(
-                    labelText: 'Stock Warning Limit *',
-                    prefixIcon: const Icon(Icons.warning_amber_outlined,
-                        size: 18, color: AppTheme.warning),
-                    helperText: 'Alert triggers when stock ≤ this number',
-                    suffixIcon: _stockVal > 0 && _limitVal > 0
-                        ? Tooltip(
-                            message: _willWarn
-                                ? 'Current stock is AT or BELOW the warning limit!'
-                                : 'Stock is above the warning limit',
-                            child: Icon(
-                              _willWarn
-                                  ? Icons.warning_amber_rounded
-                                  : Icons.check_circle_outline,
-                              color: _willWarn
-                                  ? AppTheme.warning : AppTheme.success,
-                              size: 20,
-                            ),
-                          )
-                        : null,
-                  ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                  validator: (v) => int.tryParse(v ?? '') == null
-                      ? 'Enter valid number' : null,
-                ),
-              ),
-            ]),
-
-            // ── Live warning preview ─────────
-            if (_stockVal > 0 || _limitVal > 0) ...[
-              const SizedBox(height: 10),
+              // ── Barcode field ────────────────────────────────────────
+              // Highlighted green for 2 s after a USB scan fills it in.
               AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                duration: const Duration(milliseconds: 300),
                 decoration: BoxDecoration(
-                  color: _willWarn
-                      ? AppTheme.warning.withOpacity(0.10)
-                      : AppTheme.success.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: _willWarn
-                        ? AppTheme.warning.withOpacity(0.4)
-                        : AppTheme.success.withOpacity(0.3),
+                    color: _barcodeJustScanned
+                        ? AppTheme.success
+                        : Colors.transparent,
+                    width: _barcodeJustScanned ? 2 : 0,
                   ),
+                  color: _barcodeJustScanned
+                      ? AppTheme.success.withOpacity(0.06)
+                      : Colors.transparent,
                 ),
-                child: Row(children: [
-                  Icon(
-                    _willWarn
-                        ? Icons.warning_amber_rounded
-                        : Icons.check_circle_outline,
-                    color: _willWarn ? AppTheme.warning : AppTheme.success,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _willWarn
-                          ? 'Stock ($_stockVal) is at or below the warning limit ($_limitVal). '
-                            'This item will appear in the Low Stock Alerts.'
-                          : 'Stock ($_stockVal) is above the warning limit ($_limitVal). '
-                            'No alert will be triggered.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: _willWarn ? AppTheme.warning : AppTheme.success,
-                        fontWeight: FontWeight.w500,
-                      ),
+                child: TextFormField(
+                  controller: _barcode,
+                  focusNode: _barcodeFocus,
+                  decoration: InputDecoration(
+                    labelText: 'Barcode',
+                    prefixIcon: Icon(
+                      Icons.qr_code,
+                      size: 18,
+                      color: _barcodeJustScanned
+                          ? AppTheme.success
+                          : AppTheme.textSub,
                     ),
+                    hintText: 'Scan with USB scanner or type manually',
+                    // Green "Scanned!" suffix when just filled by scanner
+                    suffixIcon: _barcodeJustScanned
+                        ? Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.check_circle,
+                                color: AppTheme.success, size: 18),
+                            const SizedBox(width: 4),
+                            Text('Scanned!',
+                                style: TextStyle(
+                                    color: AppTheme.success,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 8),
+                          ])
+                        : null,
+                  ),
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
+              ),
+
+              // USB scanner hint
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 4),
+                child: Row(children: [
+                  Icon(Icons.usb, size: 12, color: AppTheme.textSub),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Point USB scanner at product — barcode fills automatically',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textSub.withOpacity(0.8)),
                   ),
                 ]),
               ),
-            ],
+              const SizedBox(height: 12),
 
-            const SizedBox(height: 12),
-
-            // Expiry Date
-            InkWell(
-              onTap: _pickDate,
-              borderRadius: BorderRadius.circular(8),
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Expiry Date',
-                  prefixIcon: Icon(Icons.calendar_today_outlined, size: 18),
-                  suffixIcon: Icon(Icons.edit_calendar, size: 18),
+              // Price + Stock
+              Row(children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _price,
+                    decoration: const InputDecoration(
+                      labelText: 'Price (Rs.) *',
+                      prefixText: 'Rs. ',
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (v) => double.tryParse(v ?? '') == null
+                        ? 'Enter valid price' : null,
+                  ),
                 ),
-                child: Text(
-                  _expiry == null
-                      ? 'Tap to select…'
-                      : DateFormat('dd MMM yyyy').format(_expiry!),
-                  style: TextStyle(
-                    color: _expiry == null ? AppTheme.textSub : AppTheme.textMain,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _stock,
+                    decoration: const InputDecoration(
+                      labelText: 'Stock Qty *',
+                      prefixIcon: Icon(Icons.inventory_2_outlined, size: 18),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() {}),
+                    validator: (v) => int.tryParse(v ?? '') == null
+                        ? 'Enter valid qty' : null,
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 12),
+
+              // Stock Warning Limit
+              TextFormField(
+                controller: _warnLimit,
+                decoration: InputDecoration(
+                  labelText: 'Stock Warning Limit *',
+                  prefixIcon: const Icon(Icons.warning_amber_outlined,
+                      size: 18, color: AppTheme.warning),
+                  helperText: 'Alert triggers when stock ≤ this number',
+                  suffixIcon: _stockVal > 0 && _limitVal > 0
+                      ? Tooltip(
+                          message: _willWarn
+                              ? 'Stock is AT or BELOW the warning limit!'
+                              : 'Stock is above the warning limit',
+                          child: Icon(
+                            _willWarn
+                                ? Icons.warning_amber_rounded
+                                : Icons.check_circle_outline,
+                            color: _willWarn
+                                ? AppTheme.warning : AppTheme.success,
+                            size: 20,
+                          ))
+                      : null,
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+                validator: (v) => int.tryParse(v ?? '') == null
+                    ? 'Enter valid number' : null,
+              ),
+
+              // Live warning preview
+              if (_stockVal > 0 || _limitVal > 0) ...[
+                const SizedBox(height: 10),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _willWarn
+                        ? AppTheme.warning.withOpacity(0.10)
+                        : AppTheme.success.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _willWarn
+                          ? AppTheme.warning.withOpacity(0.4)
+                          : AppTheme.success.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Row(children: [
+                    Icon(
+                      _willWarn
+                          ? Icons.warning_amber_rounded
+                          : Icons.check_circle_outline,
+                      color: _willWarn ? AppTheme.warning : AppTheme.success,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _willWarn
+                            ? 'Stock ($_stockVal) is at or below the warning '
+                              'limit ($_limitVal). This item will appear in '
+                              'Low Stock Alerts.'
+                            : 'Stock ($_stockVal) is above the warning limit '
+                              '($_limitVal). No alert will be triggered.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _willWarn
+                              ? AppTheme.warning : AppTheme.success,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              ],
+              const SizedBox(height: 12),
+
+              // Expiry Date
+              InkWell(
+                onTap: _pickDate,
+                borderRadius: BorderRadius.circular(8),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Expiry Date',
+                    prefixIcon:
+                        Icon(Icons.calendar_today_outlined, size: 18),
+                    suffixIcon: Icon(Icons.edit_calendar, size: 18),
+                  ),
+                  child: Text(
+                    _expiry == null
+                        ? 'Tap to select…'
+                        : DateFormat('dd MMM yyyy').format(_expiry!),
+                    style: TextStyle(
+                      color: _expiry == null
+                          ? AppTheme.textSub : AppTheme.textMain,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ]),
+            ]),
+          ),
         ),
       ),
       actions: [

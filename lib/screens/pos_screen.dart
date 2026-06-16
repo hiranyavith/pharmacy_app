@@ -25,18 +25,20 @@ class _POSScreenState extends State<POSScreen> {
   final _customerCtrl = TextEditingController();
   final _searchFocus  = FocusNode();
 
-  // Per-cart-item qty controllers
-  final Map<int, TextEditingController> _qtyControllers = {};
+  // Per-cart-item controllers
+  final Map<int, TextEditingController> _qtyControllers   = {};
+  final Map<int, TextEditingController> _priceControllers = {}; // ← NEW
 
-  List<Medicine>  _searchResults = [];
-  List<CartItem>  _cart          = [];
-  bool            _searching     = false;
-  bool            _processing    = false;
-  PaymentType     _paymentType   = PaymentType.cash;
+  List<Medicine> _searchResults = [];
+  List<CartItem> _cart          = [];
+  bool           _searching     = false;
+  bool           _processing    = false;
+  PaymentType    _paymentType   = PaymentType.cash;
 
   @override
   void dispose() {
-    for (final c in _qtyControllers.values) c.dispose();
+    for (final c in _qtyControllers.values)   c.dispose();
+    for (final c in _priceControllers.values) c.dispose();
     _searchCtrl.dispose();
     _discountCtrl.dispose();
     _cashCtrl.dispose();
@@ -45,7 +47,7 @@ class _POSScreenState extends State<POSScreen> {
     super.dispose();
   }
 
-  // ── Search ────────────────────────────
+  // ── Search ─────────────────────────────────────────────────────────────────
   Future<void> _search(String q) async {
     if (q.isEmpty) { setState(() => _searchResults = []); return; }
     setState(() => _searching = true);
@@ -53,7 +55,7 @@ class _POSScreenState extends State<POSScreen> {
     if (mounted) setState(() { _searchResults = r; _searching = false; });
   }
 
-  // ── Add to cart ───────────────────────
+  // ── Add to cart ────────────────────────────────────────────────────────────
   void _addToCart(Medicine m) {
     if (m.stock <= 0) { showError(context, '${m.name} is out of stock.'); return; }
     setState(() {
@@ -61,14 +63,16 @@ class _POSScreenState extends State<POSScreen> {
       if (idx >= 0) {
         if (_cart[idx].quantity < m.stock) {
           _cart[idx].quantity++;
-          _qtyControllers[_cart[idx].medicine.id!]?.text =
-              '${_cart[idx].quantity}';
+          _qtyControllers[m.id!]?.text = '${_cart[idx].quantity}';
         } else {
           showError(context, 'Cannot exceed stock (${m.stock}).');
         }
       } else {
         _cart.add(CartItem(medicine: m));
-        _qtyControllers[m.id!] = TextEditingController(text: '1');
+        _qtyControllers[m.id!] =
+            TextEditingController(text: '1');
+        _priceControllers[m.id!] =
+            TextEditingController(text: m.price.toStringAsFixed(2));  // ← NEW
       }
       _searchResults = [];
       _searchCtrl.clear();
@@ -76,7 +80,7 @@ class _POSScreenState extends State<POSScreen> {
     _searchFocus.requestFocus();
   }
 
-  // ── Update qty via stepper ────────────
+  // ── Qty stepper ────────────────────────────────────────────────────────────
   void _stepQty(int cartIdx, int delta) {
     final item   = _cart[cartIdx];
     final newQty = (item.quantity + delta).clamp(1, item.medicine.stock);
@@ -84,32 +88,52 @@ class _POSScreenState extends State<POSScreen> {
     _qtyControllers[item.medicine.id!]?.text = '$newQty';
   }
 
-  // ── Update qty via text field ─────────
   void _onQtyInput(int cartIdx, String val) {
     final parsed = int.tryParse(val);
     if (parsed == null || parsed < 1) return;
     final item    = _cart[cartIdx];
     final clamped = parsed.clamp(1, item.medicine.stock);
     setState(() => item.quantity = clamped);
-    if (clamped != parsed) {
-      // fix value in controller if clamped
+    if (clamped != parsed)
       _qtyControllers[item.medicine.id!]?.text = '$clamped';
-    }
   }
 
+  // ── Selling price input ────────────────────────────────────────────────────
+  void _onPriceInput(int cartIdx, String val) {
+    final parsed = double.tryParse(val);
+    setState(() {
+      // null / 0 / negative → revert to MRP (no override)
+      _cart[cartIdx].sellingPrice = (parsed != null && parsed > 0) ? parsed : null;
+    });
+  }
+
+  // Reset price back to MRP
+  void _resetPrice(int cartIdx) {
+    final item = _cart[cartIdx];
+    setState(() => item.sellingPrice = null);
+    _priceControllers[item.medicine.id!]?.text =
+        item.medicine.price.toStringAsFixed(2);
+  }
+
+  // ── Remove / clear ─────────────────────────────────────────────────────────
   void _removeFromCart(int idx) {
     final id = _cart[idx].medicine.id!;
     _qtyControllers[id]?.dispose();
+    _priceControllers[id]?.dispose();
     _qtyControllers.remove(id);
+    _priceControllers.remove(id);
     setState(() => _cart.removeAt(idx));
   }
 
   void _clearCart() {
-    for (final c in _qtyControllers.values) c.dispose();
+    for (final c in _qtyControllers.values)   c.dispose();
+    for (final c in _priceControllers.values) c.dispose();
     _qtyControllers.clear();
+    _priceControllers.clear();
     setState(() => _cart.clear());
   }
 
+  // ── Totals ─────────────────────────────────────────────────────────────────
   double get _subtotal => _cart.fold(0, (s, i) => s + i.lineTotal);
   double get _discount => double.tryParse(_discountCtrl.text) ?? 0;
   double get _total    => (_subtotal - _discount).clamp(0, double.infinity);
@@ -117,7 +141,7 @@ class _POSScreenState extends State<POSScreen> {
   double get _change   => (_cash - _total).clamp(0, double.infinity);
   bool   get _isCard   => _paymentType == PaymentType.card;
 
-  // ── Process sale ──────────────────────
+  // ── Process sale ───────────────────────────────────────────────────────────
   Future<void> _processSale() async {
     if (_cart.isEmpty) { showError(context, 'Cart is empty.'); return; }
     setState(() => _processing = true);
@@ -149,36 +173,46 @@ class _POSScreenState extends State<POSScreen> {
     builder: (_) => _BillPreviewDialog(bill: bill),
   ).then((_) => _searchFocus.requestFocus());
 
+  // ── Quick cash amounts ─────────────────────────────────────────────────────
+  List<double> _quickAmounts() {
+    if (_total <= 0) return [100, 200, 500, 1000];
+    final amounts = <double>[];
+    for (final step in [50, 100, 200, 500, 1000]) {
+      final rounded = ((_total / step).ceil() * step).toDouble();
+      if (!amounts.contains(rounded)) amounts.add(rounded);
+      if (amounts.length >= 4) break;
+    }
+    return amounts;
+  }
+
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
+
     return Row(children: [
 
-      // ════════════════════════
+      // ══════════════════════════════════════════════════════
       // LEFT: Search + Cart
-      // ════════════════════════
+      // ══════════════════════════════════════════════════════
       Expanded(
         flex: 3,
         child: Column(children: [
 
-          // ── Top bar ──────────
+          // ── Top bar ──────────────────────────────────────
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(children: [
-              const Icon(Icons.point_of_sale,
-                  color: AppTheme.primary, size: 22),
+              const Icon(Icons.point_of_sale, color: AppTheme.primary, size: 22),
               const SizedBox(width: 10),
               const Text('POS / Billing',
                   style: TextStyle(fontSize: 18,
                       fontWeight: FontWeight.bold, color: AppTheme.textMain)),
               const Spacer(),
-              // item count chip
               if (_cart.isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(right: 12),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppTheme.primary.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(12),
@@ -186,24 +220,20 @@ class _POSScreenState extends State<POSScreen> {
                   child: Text('${_cart.length} item(s)',
                       style: const TextStyle(
                           color: AppTheme.primary,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12)),
+                          fontWeight: FontWeight.w600, fontSize: 12)),
                 ),
-              // Clear cart
               if (_cart.isNotEmpty)
                 TextButton.icon(
                   onPressed: _clearCart,
                   icon: const Icon(Icons.delete_sweep_outlined,
                       size: 16, color: AppTheme.danger),
                   label: const Text('Clear',
-                      style: TextStyle(
-                          color: AppTheme.danger, fontSize: 13)),
+                      style: TextStyle(color: AppTheme.danger, fontSize: 13)),
                   style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 6)),
                 ),
               const SizedBox(width: 8),
-              // Search field
               SizedBox(
                 width: 300,
                 child: TextField(
@@ -230,7 +260,7 @@ class _POSScreenState extends State<POSScreen> {
           ),
           const Divider(height: 1),
 
-          // ── Search results ────
+          // ── Search results ────────────────────────────────
           if (_searchResults.isNotEmpty)
             Container(
               color: Colors.white,
@@ -241,7 +271,7 @@ class _POSScreenState extends State<POSScreen> {
                 separatorBuilder: (_, __) =>
                     const Divider(height: 1, indent: 56),
                 itemBuilder: (_, i) {
-                  final m = _searchResults[i];
+                  final m      = _searchResults[i];
                   final inCart = _cart.any((c) => c.medicine.id == m.id);
                   return ListTile(
                     dense: true,
@@ -269,22 +299,18 @@ class _POSScreenState extends State<POSScreen> {
                           ),
                           child: const Text('In cart',
                               style: TextStyle(
-                                  fontSize: 10,
-                                  color: AppTheme.success,
+                                  fontSize: 10, color: AppTheme.success,
                                   fontWeight: FontWeight.w600)),
                         ),
                       ],
                     ]),
-                    subtitle: Text(
-                      '${m.category}  ·  Stock: ${m.stock}',
-                      style: const TextStyle(fontSize: 11),
-                    ),
+                    subtitle: Text('${m.category}  ·  Stock: ${m.stock}',
+                        style: const TextStyle(fontSize: 11)),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       Text('Rs. ${fmt.format(m.price)}',
                           style: const TextStyle(
                               color: AppTheme.primary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13)),
+                              fontWeight: FontWeight.w600, fontSize: 13)),
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.all(4),
@@ -306,11 +332,11 @@ class _POSScreenState extends State<POSScreen> {
                 padding: EdgeInsets.all(12),
                 child: CircularProgressIndicator()),
 
-          // ── Cart list ─────────
+          // ── Cart ─────────────────────────────────────────
           Expanded(
             child: _cart.isEmpty
-                ? Center(child: Column(mainAxisSize: MainAxisSize.min,
-                    children: [
+                ? Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
                       Icon(Icons.shopping_cart_outlined,
                           size: 64, color: Colors.grey[200]),
                       const SizedBox(height: 10),
@@ -325,43 +351,37 @@ class _POSScreenState extends State<POSScreen> {
                               color: AppTheme.textSub, fontSize: 12)),
                     ]))
                 : Column(children: [
-                    // Table header
+                    // ── Table header ──────────────────────
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 8),
                       color: AppTheme.primary.withOpacity(0.04),
                       child: const Row(children: [
                         Expanded(child: Text('Medicine',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                                color: AppTheme.textSub))),
+                            style: TextStyle(fontWeight: FontWeight.w600,
+                                fontSize: 12, color: AppTheme.textSub))),
                         SizedBox(width: 160,
                             child: Text('Quantity',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
-                                    color: AppTheme.textSub))),
-                        SizedBox(width: 90,
-                            child: Text('Unit Price',
-                                textAlign: TextAlign.right,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
-                                    color: AppTheme.textSub))),
+                                style: TextStyle(fontWeight: FontWeight.w600,
+                                    fontSize: 12, color: AppTheme.textSub))),
+                        // ← NEW column header
+                        SizedBox(width: 130,
+                            child: Text('Selling Price',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontWeight: FontWeight.w600,
+                                    fontSize: 12, color: AppTheme.textSub))),
                         SizedBox(width: 90,
                             child: Text('Total',
                                 textAlign: TextAlign.right,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
-                                    color: AppTheme.textSub))),
+                                style: TextStyle(fontWeight: FontWeight.w600,
+                                    fontSize: 12, color: AppTheme.textSub))),
                         SizedBox(width: 36),
                       ]),
                     ),
                     const Divider(height: 1),
-                    // Cart rows
+
+                    // ── Cart rows ─────────────────────────
                     Expanded(
                       child: ListView.separated(
                         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -369,60 +389,76 @@ class _POSScreenState extends State<POSScreen> {
                         separatorBuilder: (_, __) =>
                             const Divider(height: 1, indent: 20),
                         itemBuilder: (_, i) {
-                          final item = _cart[i];
-                          final ctrl = _qtyControllers[item.medicine.id!]
+                          final item       = _cart[i];
+                          final medId      = item.medicine.id!;
+                          final qtyCtrl    = _qtyControllers[medId]
+                              ?? TextEditingController(text: '${item.quantity}');
+                          final priceCtrl  = _priceControllers[medId]
                               ?? TextEditingController(
-                                  text: '${item.quantity}');
+                                  text: item.medicine.price.toStringAsFixed(2));
+                          final isPriceOverridden =
+                              item.sellingPrice != null &&
+                              item.sellingPrice != item.medicine.price;
+
                           return Padding(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 8),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                // Medicine info
-                                Expanded(child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(item.medicine.name,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 13)),
-                                    const SizedBox(height: 2),
-                                    Text('Stock: ${item.medicine.stock} available',
-                                        style: const TextStyle(
-                                            color: AppTheme.textSub,
-                                            fontSize: 11)),
-                                  ],
-                                )),
 
-                                // ── Qty Stepper + Input ──
+                                // Medicine info
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(item.medicine.name,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 13)),
+                                      const SizedBox(height: 2),
+                                      Row(children: [
+                                        Text(
+                                          'MRP: Rs. ${fmt.format(item.medicine.price)}',
+                                          style: const TextStyle(
+                                              color: AppTheme.textSub,
+                                              fontSize: 11),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '· Stock: ${item.medicine.stock}',
+                                          style: const TextStyle(
+                                              color: AppTheme.textSub,
+                                              fontSize: 11),
+                                        ),
+                                      ]),
+                                    ],
+                                  ),
+                                ),
+
+                                // ── Qty stepper ──────────────────────
                                 Container(
                                   width: 160,
                                   height: 38,
                                   decoration: BoxDecoration(
-                                    border: Border.all(
-                                        color: Colors.grey[300]!),
+                                    border: Border.all(color: Colors.grey[300]!),
                                     borderRadius: BorderRadius.circular(8),
                                     color: Colors.white,
                                   ),
                                   child: Row(children: [
-                                    // Minus button
                                     StepperBtn(
                                       icon: Icons.remove,
                                       enabled: item.quantity > 1,
                                       isLeft: true,
                                       onTap: () => _stepQty(i, -1),
                                     ),
-
-                                    // Qty text input
                                     Expanded(
                                       child: TextField(
-                                        controller: ctrl,
+                                        controller: qtyCtrl,
                                         textAlign: TextAlign.center,
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
-                                          FilteringTextInputFormatter
-                                              .digitsOnly,
+                                          FilteringTextInputFormatter.digitsOnly,
                                           LengthLimitingTextInputFormatter(4),
                                         ],
                                         style: const TextStyle(
@@ -435,52 +471,137 @@ class _POSScreenState extends State<POSScreen> {
                                           enabledBorder: InputBorder.none,
                                           focusedBorder: InputBorder.none,
                                           isDense: true,
-                                          contentPadding:
-                                              EdgeInsets.symmetric(
-                                                  vertical: 8),
+                                          contentPadding: EdgeInsets.symmetric(
+                                              vertical: 8),
                                         ),
                                         onChanged: (v) => _onQtyInput(i, v),
                                         onSubmitted: (v) {
-                                          if (v.isEmpty) {
-                                            ctrl.text = '${item.quantity}';
-                                          }
+                                          if (v.isEmpty)
+                                            qtyCtrl.text = '${item.quantity}';
                                         },
                                       ),
                                     ),
-
-                                    // Plus button
                                     StepperBtn(
                                       icon: Icons.add,
-                                      enabled: item.quantity <
-                                          item.medicine.stock,
+                                      enabled: item.quantity < item.medicine.stock,
                                       isLeft: false,
                                       onTap: () => _stepQty(i, 1),
                                     ),
                                   ]),
                                 ),
 
-                                // Unit price
-                                SizedBox(
-                                  width: 90,
-                                  child: Text(
-                                    'Rs. ${fmt.format(item.medicine.price)}',
-                                    textAlign: TextAlign.right,
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: AppTheme.textSub),
+                                const SizedBox(width: 8),
+
+                                // ── Selling price field ───────────────
+                                Container(
+                                  width: 122,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: isPriceOverridden
+                                          ? AppTheme.warning
+                                          : Colors.grey[300]!,
+                                      width: isPriceOverridden ? 1.5 : 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: isPriceOverridden
+                                        ? AppTheme.warning.withOpacity(0.05)
+                                        : Colors.white,
                                   ),
+                                  child: Row(children: [
+                                    // "Rs." prefix
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                          left: 8, right: 2),
+                                      child: Text('Rs.',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: isPriceOverridden
+                                                  ? AppTheme.warning
+                                                  : AppTheme.textSub)),
+                                    ),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: priceCtrl,
+                                        textAlign: TextAlign.center,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                                decimal: true),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(
+                                              RegExp(r'^\d+\.?\d{0,2}')),
+                                        ],
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: isPriceOverridden
+                                              ? AppTheme.warning
+                                              : AppTheme.textMain,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          border: InputBorder.none,
+                                          enabledBorder: InputBorder.none,
+                                          focusedBorder: InputBorder.none,
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(
+                                              vertical: 8),
+                                        ),
+                                        onChanged: (v) => _onPriceInput(i, v),
+                                        onSubmitted: (v) {
+                                          if (v.isEmpty) _resetPrice(i);
+                                        },
+                                      ),
+                                    ),
+                                    // Reset to MRP button — only shown when overridden
+                                    if (isPriceOverridden)
+                                      Tooltip(
+                                        message: 'Reset to MRP',
+                                        child: GestureDetector(
+                                          onTap: () => _resetPrice(i),
+                                          child: const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                                horizontal: 4),
+                                            child: Icon(Icons.refresh,
+                                                size: 14,
+                                                color: AppTheme.warning),
+                                          ),
+                                        ),
+                                      ),
+                                  ]),
                                 ),
+
+                                const SizedBox(width: 8),
 
                                 // Line total
                                 SizedBox(
                                   width: 90,
-                                  child: Text(
-                                    'Rs. ${fmt.format(item.lineTotal)}',
-                                    textAlign: TextAlign.right,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                        color: AppTheme.primary),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.end,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Rs. ${fmt.format(item.lineTotal)}',
+                                        textAlign: TextAlign.right,
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: isPriceOverridden
+                                                ? AppTheme.warning
+                                                : AppTheme.primary),
+                                      ),
+                                      // Show MRP-based total in grey when overridden
+                                      if (isPriceOverridden)
+                                        Text(
+                                          'MRP: ${fmt.format(item.medicine.price * item.quantity)}',
+                                          textAlign: TextAlign.right,
+                                          style: const TextStyle(
+                                              fontSize: 10,
+                                              color: AppTheme.textSub,
+                                              decoration:
+                                                  TextDecoration.lineThrough),
+                                        ),
+                                    ],
                                   ),
                                 ),
 
@@ -488,10 +609,8 @@ class _POSScreenState extends State<POSScreen> {
                                 SizedBox(
                                   width: 36,
                                   child: IconButton(
-                                    icon: const Icon(
-                                        Icons.delete_outline,
-                                        size: 17,
-                                        color: AppTheme.danger),
+                                    icon: const Icon(Icons.delete_outline,
+                                        size: 17, color: AppTheme.danger),
                                     onPressed: () => _removeFromCart(i),
                                     padding: EdgeInsets.zero,
                                     tooltip: 'Remove',
@@ -506,25 +625,49 @@ class _POSScreenState extends State<POSScreen> {
                   ]),
           ),
 
-          // ── Cart footer subtotal ──
+          // ── Cart footer subtotal ──────────────────────────
           if (_cart.isNotEmpty)
             Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 20, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
-                border: Border(
-                    top: BorderSide(color: Colors.grey[200]!)),
+                border: Border(top: BorderSide(color: Colors.grey[200]!)),
               ),
               child: Row(children: [
-                Text('${_cart.length} item(s)  ·  '
-                     '${_cart.fold(0, (s, i) => s + i.quantity)} units',
-                    style: const TextStyle(
-                        color: AppTheme.textSub, fontSize: 12)),
+                Text(
+                  '${_cart.length} item(s)  ·  '
+                  '${_cart.fold(0, (s, i) => s + i.quantity)} units',
+                  style: const TextStyle(color: AppTheme.textSub, fontSize: 12),
+                ),
+                // Price-override warning badge
+                if (_cart.any((c) =>
+                    c.sellingPrice != null &&
+                    c.sellingPrice != c.medicine.price)) ...[
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.warning.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: AppTheme.warning.withOpacity(0.4)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.edit,
+                          size: 11, color: AppTheme.warning),
+                      const SizedBox(width: 4),
+                      const Text('Custom price applied',
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: AppTheme.warning,
+                              fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ],
                 const Spacer(),
                 const Text('Subtotal: ',
-                    style: TextStyle(
-                        color: AppTheme.textSub, fontSize: 13)),
+                    style: TextStyle(color: AppTheme.textSub, fontSize: 13)),
                 Text('Rs. ${fmt.format(_subtotal)}',
                     style: const TextStyle(
                         fontWeight: FontWeight.bold,
@@ -535,9 +678,9 @@ class _POSScreenState extends State<POSScreen> {
         ]),
       ),
 
-      // ════════════════════════
+      // ══════════════════════════════════════════════════════
       // RIGHT: Order Summary
-      // ════════════════════════
+      // ══════════════════════════════════════════════════════
       Container(
         width: 310,
         decoration: const BoxDecoration(
@@ -549,16 +692,13 @@ class _POSScreenState extends State<POSScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
               Row(children: [
                 const Icon(Icons.receipt_long_outlined,
                     color: AppTheme.primary, size: 18),
                 const SizedBox(width: 8),
                 const Text('Order Summary',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textMain)),
+                    style: TextStyle(fontSize: 15,
+                        fontWeight: FontWeight.bold, color: AppTheme.textMain)),
               ]),
               const SizedBox(height: 16),
 
@@ -583,15 +723,13 @@ class _POSScreenState extends State<POSScreen> {
               const SizedBox(height: 16),
               const Divider(),
 
-              // Subtotal
               _SummaryRow('Subtotal', 'Rs. ${fmt.format(_subtotal)}'),
               const SizedBox(height: 10),
 
-              // Discount row
+              // Discount
               Row(children: [
                 const Text('Discount (Rs.):',
-                    style: TextStyle(
-                        color: AppTheme.textSub, fontSize: 13)),
+                    style: TextStyle(color: AppTheme.textSub, fontSize: 13)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
@@ -612,7 +750,6 @@ class _POSScreenState extends State<POSScreen> {
               const SizedBox(height: 12),
               const Divider(),
 
-              // Total
               _SummaryRow('TOTAL', 'Rs. ${fmt.format(_total)}',
                   large: true, color: AppTheme.primary),
               const SizedBox(height: 18),
@@ -632,8 +769,8 @@ class _POSScreenState extends State<POSScreen> {
                     icon: Icons.payments_outlined,
                     selected: !_isCard,
                     color: AppTheme.success,
-                    onTap: () => setState(
-                        () => _paymentType = PaymentType.cash),
+                    onTap: () =>
+                        setState(() => _paymentType = PaymentType.cash),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -643,20 +780,18 @@ class _POSScreenState extends State<POSScreen> {
                     icon: Icons.credit_card,
                     selected: _isCard,
                     color: AppTheme.primary,
-                    onTap: () => setState(
-                        () => _paymentType = PaymentType.card),
+                    onTap: () =>
+                        setState(() => _paymentType = PaymentType.card),
                   ),
                 ),
               ]),
               const SizedBox(height: 14),
 
-              // Cash section
+              // Cash / card section
               if (!_isCard) ...[
-                // Cash input with quick-amount chips
                 Row(children: [
                   const Text('Cash (Rs.):',
-                      style: TextStyle(
-                          color: AppTheme.textSub, fontSize: 13)),
+                      style: TextStyle(color: AppTheme.textSub, fontSize: 13)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
@@ -671,7 +806,6 @@ class _POSScreenState extends State<POSScreen> {
                   ),
                 ]),
                 const SizedBox(height: 8),
-                // Quick cash buttons
                 Wrap(spacing: 6, runSpacing: 6, children: [
                   for (final amt in _quickAmounts())
                     _QuickCashBtn(
@@ -684,7 +818,6 @@ class _POSScreenState extends State<POSScreen> {
                     ),
                 ]),
                 const SizedBox(height: 10),
-                // Change display
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(
@@ -719,7 +852,6 @@ class _POSScreenState extends State<POSScreen> {
                   ]),
                 ),
               ] else ...[
-                // Card info box
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 12),
@@ -734,12 +866,11 @@ class _POSScreenState extends State<POSScreen> {
                         size: 18, color: AppTheme.primary),
                     const SizedBox(width: 10),
                     const Expanded(
-                      child: Text(
-                        'Card payment — no change required.',
-                        style: TextStyle(
-                            fontSize: 12, color: AppTheme.primary,
-                            fontWeight: FontWeight.w500),
-                      ),
+                      child: Text('Card payment — no change required.',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.primary,
+                              fontWeight: FontWeight.w500)),
                     ),
                   ]),
                 ),
@@ -747,42 +878,39 @@ class _POSScreenState extends State<POSScreen> {
 
               const SizedBox(height: 22),
 
-              // Process sale button
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: _processing || _cart.isEmpty
-                      ? null : _processSale,
+                  onPressed:
+                      _processing || _cart.isEmpty ? null : _processSale,
                   icon: _processing
-                      ? const SizedBox(width: 18, height: 18,
+                      ? const SizedBox(
+                          width: 18, height: 18,
                           child: CircularProgressIndicator(
                               color: Colors.white, strokeWidth: 2))
                       : Icon(
-                          _isCard
-                              ? Icons.credit_card
-                              : Icons.payments_outlined,
+                          _isCard ? Icons.credit_card : Icons.payments_outlined,
                           size: 20),
                   label: Text(
-                    _isCard ? 'Process Card Payment' : 'Process Cash Sale',
+                    _isCard
+                        ? 'Process Card Payment'
+                        : 'Process Cash Sale',
                     style: const TextStyle(
                         fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isCard
-                        ? AppTheme.primary : AppTheme.success,
+                    backgroundColor:
+                        _isCard ? AppTheme.primary : AppTheme.success,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
               ),
-
-              // Keyboard shortcut hint
               const SizedBox(height: 8),
               const Center(
                 child: Text('Press Enter after typing qty to confirm',
-                    style: TextStyle(
-                        color: AppTheme.textSub, fontSize: 10)),
+                    style: TextStyle(color: AppTheme.textSub, fontSize: 10)),
               ),
             ],
           ),
@@ -790,36 +918,17 @@ class _POSScreenState extends State<POSScreen> {
       ),
     ]);
   }
-
-  // Quick cash amounts based on total
-  List<double> _quickAmounts() {
-    if (_total <= 0) return [100, 200, 500, 1000];
-    final amounts = <double>[];
-    // Round up to nearest 50, 100, 200, 500
-    for (final step in [50, 100, 200, 500, 1000]) {
-      final rounded = ((_total / step).ceil() * step).toDouble();
-      if (!amounts.contains(rounded)) amounts.add(rounded);
-      if (amounts.length >= 4) break;
-    }
-    return amounts;
-  }
 }
-
-
 
 // ─────────────────────────────────────────────────────────────
 // Quick cash chip
 // ─────────────────────────────────────────────────────────────
 class _QuickCashBtn extends StatelessWidget {
-  final String       label;
-  final bool         selected;
+  final String label;
+  final bool selected;
   final VoidCallback onTap;
-  const _QuickCashBtn({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
+  const _QuickCashBtn(
+      {required this.label, required this.selected, required this.onTap});
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -835,14 +944,11 @@ class _QuickCashBtn extends StatelessWidget {
               ? AppTheme.success : AppTheme.success.withOpacity(0.3),
         ),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: selected ? Colors.white : AppTheme.success,
-        ),
-      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: selected ? Colors.white : AppTheme.success)),
     ),
   );
 }
@@ -851,14 +957,14 @@ class _QuickCashBtn extends StatelessWidget {
 // Payment toggle button
 // ─────────────────────────────────────────────────────────────
 class _PaymentBtn extends StatelessWidget {
-  final String       label;
-  final IconData     icon;
-  final bool         selected;
-  final Color        color;
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final Color color;
   final VoidCallback onTap;
-  const _PaymentBtn({required this.label, required this.icon,
-      required this.selected, required this.color, required this.onTap});
-
+  const _PaymentBtn(
+      {required this.label, required this.icon,
+       required this.selected, required this.color, required this.onTap});
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -878,9 +984,8 @@ class _PaymentBtn extends StatelessWidget {
         const SizedBox(height: 4),
         Text(label,
             style: TextStyle(
-              fontSize: 13, fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : Colors.grey[600],
-            )),
+                fontSize: 13, fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : Colors.grey[600])),
       ]),
     ),
   );
@@ -891,21 +996,23 @@ class _PaymentBtn extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 class _SummaryRow extends StatelessWidget {
   final String label, value;
-  final bool   large;
-  final Color  color;
+  final bool large;
+  final Color color;
   const _SummaryRow(this.label, this.value,
       {this.large = false, this.color = AppTheme.textMain});
   @override
   Widget build(BuildContext context) => Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Text(label, style: TextStyle(
-          color: large ? color : AppTheme.textSub,
-          fontWeight: large ? FontWeight.bold : FontWeight.normal,
-          fontSize: large ? 16 : 13)),
-      Text(value, style: TextStyle(
-          color: color, fontWeight: FontWeight.bold,
-          fontSize: large ? 18 : 13)),
+      Text(label,
+          style: TextStyle(
+              color: large ? color : AppTheme.textSub,
+              fontWeight: large ? FontWeight.bold : FontWeight.normal,
+              fontSize: large ? 16 : 13)),
+      Text(value,
+          style: TextStyle(
+              color: color, fontWeight: FontWeight.bold,
+              fontSize: large ? 18 : 13)),
     ],
   );
 }
@@ -940,27 +1047,28 @@ class _BillPreviewDialog extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppTheme.success.withOpacity(0.06),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: AppTheme.success.withOpacity(0.2)),
+              border: Border.all(color: AppTheme.success.withOpacity(0.2)),
             ),
             child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Text(bill.invoiceNo,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15)),
-                  Text(dateFmt.format(bill.createdAt),
-                      style: const TextStyle(
-                          color: AppTheme.textSub, fontSize: 12)),
-                ])),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    Text(bill.invoiceNo,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15)),
+                    Text(dateFmt.format(bill.createdAt),
+                        style: const TextStyle(
+                            color: AppTheme.textSub, fontSize: 12)),
+                  ]),
+                ),
                 Text('Rs. ${fmt.format(bill.total)}',
                     style: const TextStyle(
                         color: AppTheme.success,
-                        fontWeight: FontWeight.bold, fontSize: 20)),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20)),
               ]),
               if (bill.customerName.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -984,29 +1092,29 @@ class _BillPreviewDialog extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(isCard ? Icons.credit_card : Icons.payments_outlined,
+                  Icon(
+                      isCard ? Icons.credit_card : Icons.payments_outlined,
                       size: 12,
                       color: isCard ? AppTheme.primary : AppTheme.success),
                   const SizedBox(width: 4),
                   Text(isCard ? 'Card Payment' : 'Cash Payment',
                       style: TextStyle(
                           fontSize: 11, fontWeight: FontWeight.w600,
-                          color: isCard
-                              ? AppTheme.primary : AppTheme.success)),
+                          color:
+                              isCard ? AppTheme.primary : AppTheme.success)),
                 ]),
               ),
             ]),
           ),
           const SizedBox(height: 14),
 
-          // Line items
+          // Line items — show custom price tag if overridden
           Container(
             decoration: BoxDecoration(
               border: Border.all(color: Colors.grey[200]!),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(children: [
-              // Header
               Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 7),
@@ -1019,65 +1127,83 @@ class _BillPreviewDialog extends StatelessWidget {
                 ),
                 child: const Row(children: [
                   Expanded(child: Text('Medicine',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
+                      style: TextStyle(fontWeight: FontWeight.w600,
                           fontSize: 11, color: AppTheme.textSub))),
-                  SizedBox(width: 40,
-                      child: Text('Qty',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 11, color: AppTheme.textSub))),
-                  SizedBox(width: 80,
-                      child: Text('Amount',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 11, color: AppTheme.textSub))),
+                  SizedBox(width: 40, child: Text('Qty',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontWeight: FontWeight.w600,
+                          fontSize: 11, color: AppTheme.textSub))),
+                  SizedBox(width: 80, child: Text('Price',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(fontWeight: FontWeight.w600,
+                          fontSize: 11, color: AppTheme.textSub))),
+                  SizedBox(width: 80, child: Text('Amount',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(fontWeight: FontWeight.w600,
+                          fontSize: 11, color: AppTheme.textSub))),
                 ]),
               ),
-              ...bill.items.map((item) => Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                    border: Border(
-                        top: BorderSide(color: Colors.grey[100]!))),
-                child: Row(children: [
-                  Expanded(child: Text(item.medName,
-                      style: const TextStyle(fontSize: 13))),
-                  SizedBox(width: 40,
-                      child: Text('×${item.quantity}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: AppTheme.textSub, fontSize: 12))),
-                  SizedBox(width: 80,
-                      child: Text('Rs. ${fmt.format(item.lineTotal)}',
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500))),
-                ]),
-              )),
+              ...bill.items.map((item) {
+                final isCustomPrice = item.unitPrice != item.mrp && item.mrp > 0;
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                      border: Border(
+                          top: BorderSide(color: Colors.grey[100]!))),
+                  child: Row(children: [
+                    Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(item.medName,
+                          style: const TextStyle(fontSize: 13)),
+                      if (isCustomPrice)
+                        Text('MRP: Rs. ${fmt.format(item.mrp)}',
+                            style: const TextStyle(
+                                fontSize: 10,
+                                color: AppTheme.textSub,
+                                decoration: TextDecoration.lineThrough)),
+                    ])),
+                    SizedBox(width: 40,
+                        child: Text('×${item.quantity}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: AppTheme.textSub, fontSize: 12))),
+                    SizedBox(width: 80,
+                        child: Text('Rs. ${fmt.format(item.unitPrice)}',
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: isCustomPrice
+                                    ? AppTheme.warning
+                                    : AppTheme.textMain,
+                                fontWeight: isCustomPrice
+                                    ? FontWeight.w600
+                                    : FontWeight.normal))),
+                    SizedBox(width: 80,
+                        child: Text('Rs. ${fmt.format(item.lineTotal)}',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500))),
+                  ]),
+                );
+              }),
             ]),
           ),
 
-          // Cash / change
           if (!isCard && bill.given > 0) ...[
             const SizedBox(height: 10),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('Cash Given:',
-                  style: TextStyle(
-                      color: AppTheme.textSub, fontSize: 12)),
+                  style: TextStyle(color: AppTheme.textSub, fontSize: 12)),
               Text('Rs. ${fmt.format(bill.given)}',
                   style: const TextStyle(fontSize: 12)),
             ]),
             const SizedBox(height: 4),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('Change:',
-                  style: TextStyle(
-                      color: AppTheme.success,
+                  style: TextStyle(color: AppTheme.success,
                       fontWeight: FontWeight.w600, fontSize: 13)),
               Text('Rs. ${fmt.format(bill.change)}',
                   style: const TextStyle(
