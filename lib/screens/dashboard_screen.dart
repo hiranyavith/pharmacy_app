@@ -1,6 +1,7 @@
 // lib/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pharmacy_app/screens/grn_screen.dart';
 import '../services/auth_service.dart';
 import '../services/medicine_service.dart';
 import '../services/billing_service.dart';
@@ -56,6 +57,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     POSScreen(),
     BillHistoryScreen(),
     ExpiryScreen(),
+    GRNScreen(),
     // ClaimsScreen(),
   ];
 
@@ -756,6 +758,12 @@ class _DashboardHome extends StatelessWidget {
                               label: 'Expiry Alerts',
                               color: AppTheme.warning,
                               onTap: () => onNavigate(4),
+                            ),
+                             _ActionChip(
+                              icon: Icons.support_outlined,
+                              label: 'Supplier And GRN',
+                              color: AppTheme.danger,
+                              onTap: () => onNavigate(5),
                             ),
                             // _ActionChip(
                             //   icon: Icons.assignment_return_outlined,
