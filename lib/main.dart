@@ -35,7 +35,7 @@ class PharmacyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Health Hub Pharmacy System',
+      title: 'Sampath Book Shop POS System',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
       home: isLoggedIn ? const DashboardScreen() : const LoginScreen(),

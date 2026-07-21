@@ -136,22 +136,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         color: Colors.white.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.local_pharmacy,
-                          color: Colors.white, size: 22),
+                      child:
+                          const Icon(Icons.shop, color: Colors.white, size: 22),
                     ),
                     const SizedBox(width: 10),
                     const Expanded(
-                      child: Text('Health Hub',
+                      child: Text('Sampath Book Shop',
                           style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold)),
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),textAlign: TextAlign.start,),
+
                     ),
                   ]),
                   const SizedBox(height: 4),
                   Padding(
                     padding: const EdgeInsets.only(left: 40),
-                    child: Text('Pharmacy System',
+                    child: Text('Point Of Sale',
                         style: TextStyle(
                             color: Colors.white.withOpacity(0.6),
                             fontSize: 11)),
@@ -459,7 +461,7 @@ class _DashboardHome extends StatelessWidget {
                           children: [
                             Expanded(
                                 child: _KpiCard(
-                              label: 'Total Medicines',
+                              label: 'Total Products',
                               value: '$totalMeds',
                               icon: Icons.medication_outlined,
                               color: AppTheme.primary,
@@ -759,7 +761,7 @@ class _DashboardHome extends StatelessWidget {
                               color: AppTheme.warning,
                               onTap: () => onNavigate(4),
                             ),
-                             _ActionChip(
+                            _ActionChip(
                               icon: Icons.support_outlined,
                               label: 'Supplier And GRN',
                               color: AppTheme.danger,

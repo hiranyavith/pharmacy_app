@@ -77,7 +77,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   size: 48, color: AppTheme.primary),
             ),
             const SizedBox(height: 20),
-            const Text('Health Hub Pharmacy System',
+            const Text('Sampath Book Shop POS System',
                 style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,

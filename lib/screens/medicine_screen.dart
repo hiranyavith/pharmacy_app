@@ -5,48 +5,49 @@ import '../models/medicine.dart';
 import '../services/medicine_service.dart';
 import '../services/barcode_scanner_service.dart';
 import '../utils/app_theme.dart';
-
+import 'label_design_screen.dart';
+ 
 // ─────────────────────────────────────────────────────────────────────────────
 class MedicineScreen extends StatefulWidget {
   const MedicineScreen({super.key});
   @override
   State<MedicineScreen> createState() => _MedicineScreenState();
 }
-
+ 
 class _MedicineScreenState extends State<MedicineScreen> {
   final _svc        = MedicineService();
   final _searchCtrl = TextEditingController();
   List<Medicine> _meds    = [];
   bool           _loading = true;
-
+ 
   StreamSubscription<String>? _barcodeSub;
-
+ 
   @override
   void initState() {
     super.initState();
     _load();
-
+ 
     // Listen for USB scanner barcodes while this screen is active
     _barcodeSub = BarcodeScannerService.instance.barcodes.listen(_onBarcode);
   }
-
+ 
   @override
   void dispose() {
     _barcodeSub?.cancel();
     super.dispose();
   }
-
+ 
   // ── Called whenever the USB scanner fires a complete code ─────────────────
   Future<void> _onBarcode(String code) async {
     if (!mounted) return;
-
+ 
     // Fill search box and search
     _searchCtrl.text = code;
     setState(() => _loading = true);
-
+ 
     final med = await _svc.getByBarcode(code);
     if (!mounted) return;
-
+ 
     if (med != null) {
       // Found — show it in the list
       await _load(code);
@@ -77,18 +78,18 @@ class _MedicineScreenState extends State<MedicineScreen> {
       }
     }
   }
-
+ 
   Future<void> _load([String q = '']) async {
     setState(() => _loading = true);
     final list = q.isEmpty ? await _svc.getAll() : await _svc.search(q);
     if (mounted) setState(() { _meds = list; _loading = false; });
   }
-
+ 
   void _openForm([Medicine? med]) => showDialog(
     context: context,
     builder: (_) => _MedicineForm(medicine: med, onSaved: _load),
   );
-
+ 
   Future<void> _delete(Medicine m) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -112,17 +113,17 @@ class _MedicineScreenState extends State<MedicineScreen> {
       _load();
     }
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     final dateFmt = DateFormat('dd MMM yyyy');
     final fmt     = NumberFormat('#,##0.00');
-
+ 
     final totalItems    = _meds.length;
     final totalUnits    = _meds.fold(0,   (s, m) => s + m.stock);
     final totalValue    = _meds.fold(0.0, (s, m) => s + m.totalValue);
     final lowStockCount = _meds.where((m) => m.isLowStock).length;
-
+ 
     return Column(children: [
       // ── Top bar ────────────────────────────────────────────────────────────
       Container(
@@ -133,7 +134,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
               style: TextStyle(fontSize: 18,
                   fontWeight: FontWeight.bold, color: AppTheme.textMain)),
           const Spacer(),
-
+ 
           // USB scanner status badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -153,7 +154,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
             ]),
           ),
           const SizedBox(width: 12),
-
+ 
           // Manual search
           SizedBox(
             width: 260,
@@ -168,7 +169,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
             ),
           ),
           const SizedBox(width: 12),
-
+ 
           ElevatedButton.icon(
             onPressed: () => _openForm(),
             icon: const Icon(Icons.add, size: 18),
@@ -177,7 +178,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
         ]),
       ),
       const Divider(height: 1),
-
+ 
       // ── Table ──────────────────────────────────────────────────────────────
       Expanded(
         child: _loading
@@ -280,6 +281,17 @@ class _MedicineScreenState extends State<MedicineScreen> {
                                 tooltip: 'Edit',
                                 onPressed: () => _openForm(m),
                               ),
+                              // ── Print label ──────────────────────────
+                              IconButton(
+                                icon: const Icon(Icons.label_outline,
+                                    size: 18, color: AppTheme.secondary),
+                                tooltip: 'Print Label',
+                                onPressed: () => showDialog(
+                                  context: context,
+                                  builder: (_) =>
+                                      LabelDesignScreen(medicine: m),
+                                ),
+                              ),
                               IconButton(
                                 icon: const Icon(Icons.delete_outline,
                                     size: 18, color: AppTheme.danger),
@@ -293,7 +305,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
                     ),
                   ),
       ),
-
+ 
       // ── Inventory Summary Footer ────────────────────────────────────────────
       if (!_loading && _meds.isNotEmpty)
         Container(
@@ -354,7 +366,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
     ]);
   }
 }
-
+ 
 // ── Footer helpers ─────────────────────────────────────────────────────────────
 class _FooterTile extends StatelessWidget {
   final String label, value;
@@ -376,10 +388,10 @@ class _FooterTile extends StatelessWidget {
     ]),
   );
 }
-
+ 
 Widget _footerDivider() =>
     Container(height: 32, width: 1, color: Colors.grey[200]);
-
+ 
 // ── Add / Edit form dialog ─────────────────────────────────────────────────────
 class _MedicineForm extends StatefulWidget {
   final Medicine? medicine;
@@ -388,23 +400,23 @@ class _MedicineForm extends StatefulWidget {
   @override
   State<_MedicineForm> createState() => _MedicineFormState();
 }
-
+ 
 class _MedicineFormState extends State<_MedicineForm> {
   final _formKey    = GlobalKey<FormState>();
   final _svc        = MedicineService();
   final _barcodeFocus = FocusNode();
-
+ 
   late TextEditingController _name, _cat, _price, _stock, _warnLimit, _barcode;
   DateTime? _expiry;
   bool _saving = false;
   bool _barcodeJustScanned = false; // visual flash feedback
-
+ 
   StreamSubscription<String>? _barcodeSub;
-
+ 
   int  get _stockVal => int.tryParse(_stock.text)     ?? 0;
   int  get _limitVal => int.tryParse(_warnLimit.text) ?? 10;
   bool get _willWarn => _stockVal <= _limitVal && _stockVal >= 0;
-
+ 
   @override
   void initState() {
     super.initState();
@@ -418,7 +430,7 @@ class _MedicineFormState extends State<_MedicineForm> {
     _warnLimit = TextEditingController(
         text: (m?.stockWarningLimit ?? 10).toString());
     _barcode   = TextEditingController(text: m?.barcode ?? '');
-
+ 
     // When a USB scan arrives while the form is open, fill the barcode field
     // regardless of which field currently has focus.
     _barcodeSub = BarcodeScannerService.instance.barcodes.listen((code) {
@@ -433,7 +445,7 @@ class _MedicineFormState extends State<_MedicineForm> {
       });
     });
   }
-
+ 
   @override
   void dispose() {
     _barcodeSub?.cancel();
@@ -442,7 +454,7 @@ class _MedicineFormState extends State<_MedicineForm> {
     _stock.dispose(); _warnLimit.dispose(); _barcode.dispose();
     super.dispose();
   }
-
+ 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
@@ -470,7 +482,7 @@ class _MedicineFormState extends State<_MedicineForm> {
       if (mounted) setState(() => _saving = false);
     }
   }
-
+ 
   Future<void> _pickDate() async {
     final d = await showDatePicker(
       context: context,
@@ -480,7 +492,7 @@ class _MedicineFormState extends State<_MedicineForm> {
     );
     if (d != null) setState(() => _expiry = d);
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.medicine != null;
@@ -497,7 +509,7 @@ class _MedicineFormState extends State<_MedicineForm> {
           key: _formKey,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-
+ 
               // Name
               TextFormField(
                 controller: _name,
@@ -508,7 +520,7 @@ class _MedicineFormState extends State<_MedicineForm> {
                 validator: (v) => v == null || v.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 12),
-
+ 
               // Category
               TextFormField(
                 controller: _cat,
@@ -518,7 +530,7 @@ class _MedicineFormState extends State<_MedicineForm> {
                 ),
               ),
               const SizedBox(height: 12),
-
+ 
               // ── Barcode field ────────────────────────────────────────
               // Highlighted green for 2 s after a USB scan fills it in.
               AnimatedContainer(
@@ -566,7 +578,7 @@ class _MedicineFormState extends State<_MedicineForm> {
                   style: const TextStyle(fontFamily: 'monospace'),
                 ),
               ),
-
+ 
               // USB scanner hint
               Padding(
                 padding: const EdgeInsets.only(top: 4, left: 4),
@@ -582,7 +594,7 @@ class _MedicineFormState extends State<_MedicineForm> {
                 ]),
               ),
               const SizedBox(height: 12),
-
+ 
               // Price + Stock
               Row(children: [
                 Expanded(
@@ -613,7 +625,7 @@ class _MedicineFormState extends State<_MedicineForm> {
                 ),
               ]),
               const SizedBox(height: 12),
-
+ 
               // Stock Warning Limit
               TextFormField(
                 controller: _warnLimit,
@@ -642,7 +654,7 @@ class _MedicineFormState extends State<_MedicineForm> {
                 validator: (v) => int.tryParse(v ?? '') == null
                     ? 'Enter valid number' : null,
               ),
-
+ 
               // Live warning preview
               if (_stockVal > 0 || _limitVal > 0) ...[
                 const SizedBox(height: 10),
@@ -690,7 +702,7 @@ class _MedicineFormState extends State<_MedicineForm> {
                 ),
               ],
               const SizedBox(height: 12),
-
+ 
               // Expiry Date
               InkWell(
                 onTap: _pickDate,

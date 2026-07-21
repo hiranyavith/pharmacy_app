@@ -18,6 +18,7 @@ dependencies:
   cupertino_icons: ^1.0.6
   window_manager: ^0.5.1
   mobile_scanner: ^5.0.0
+  barcode: ^2.2.5
 
 dev_dependencies:
   flutter_test:
