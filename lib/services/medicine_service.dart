@@ -8,7 +8,7 @@ class MedicineService {
   // ── All medicines ─────────────────────────────────────────────────────────
   Future<List<Medicine>> getAll() async {
     final rows = await _db.query(
-      'SELECT * FROM medicines ORDER BY name ASC',
+      'SELECT * FROM medicines WHERE is_active = 1 ORDER BY name ASC',
     );
     return rows.map(Medicine.fromMap).toList();
   }
@@ -71,7 +71,7 @@ class MedicineService {
         m.price,
         m.stock,
         m.stockWarningLimit,
-        m.barcode,                              // ← NEW
+        m.barcode, // ← NEW
         m.expiryDate?.toIso8601String().split('T').first,
       ],
     );
@@ -95,7 +95,7 @@ class MedicineService {
         m.price,
         m.stock,
         m.stockWarningLimit,
-        m.barcode,                              // ← NEW
+        m.barcode, // ← NEW
         m.expiryDate?.toIso8601String().split('T').first,
         m.id,
       ],
@@ -120,6 +120,20 @@ class MedicineService {
     await _db.execute(
       'UPDATE medicines SET stock = stock + :p0 WHERE id = :p1',
       [qty, medicineId],
+    );
+  }
+
+  Future<void> deactivate(int medicineId) async {
+    await _db.execute(
+      'UPDATE medicines SET is_active = 0 WHERE id = :p0',
+      [medicineId],
+    );
+  }
+
+   Future<void> activate(int medicineId) async {
+    await _db.execute(
+      'UPDATE medicines SET is_active = 1 WHERE id = :p0',
+      [medicineId],
     );
   }
 }
