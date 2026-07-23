@@ -116,7 +116,7 @@ class _ExpiryList extends StatelessWidget {
       return const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.check_circle_outline, size: 56, color: AppTheme.success),
         SizedBox(height: 8),
-        Text('No medicines expiring within 30 days.',
+        Text('No Products expiring within 30 days.',
             style: TextStyle(color: AppTheme.textSub)),
       ]));
     }
@@ -249,7 +249,7 @@ class _LowStockList extends StatelessWidget {
       return const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.check_circle_outline, size: 56, color: AppTheme.success),
         SizedBox(height: 8),
-        Text('All medicines are well stocked.',
+        Text('All Products are well stocked.',
             style: TextStyle(color: AppTheme.textSub)),
       ]));
     }

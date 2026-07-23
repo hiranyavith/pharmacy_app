@@ -164,7 +164,7 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                     color: Colors.grey[50],
                     child: const Row(children: [
                       Expanded(
-                          child: Text('Medicine',
+                          child: Text('Product',
                               style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 12,
@@ -639,7 +639,7 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                             ),
                             child: Row(children: const [
                               Expanded(
-                                  child: Text('Medicine',
+                                  child: Text('Product',
                                       style: TextStyle(
                                           fontWeight:
                                               FontWeight.w600))),

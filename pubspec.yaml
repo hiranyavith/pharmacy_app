@@ -27,3 +27,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: NotoSansSinhala
+      fonts:
+        - asset: assets/fonts/NotoSansSinhala-Regular.ttf
+        - asset: assets/fonts/NotoSansSinhala-Bold.ttf
+          weight: 700
+  assets:
+    - assets/fonts/NotoSansSinhala-Regular.ttf
+    - assets/fonts/NotoSansSinhala-Bold.ttf

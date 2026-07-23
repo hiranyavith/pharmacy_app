@@ -42,7 +42,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   static const _navItems = [
     _NavItem(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard', null),
-    _NavItem(Icons.medication_outlined, Icons.medication, 'Medicines', null),
+    _NavItem(Icons.medication_outlined, Icons.medication, 'Inventory', null),
     _NavItem(Icons.point_of_sale_outlined, Icons.point_of_sale, 'POS / Billing',
         null),
     _NavItem(
@@ -565,7 +565,7 @@ class _DashboardHome extends StatelessWidget {
                                         letterSpacing: -0.5)),
                               ])),
                           // Mini stats inside banner
-                          _BannerStat('Medicines', '$totalMeds'),
+                          _BannerStat('Products', '$totalMeds'),
                           const SizedBox(width: 24),
                           _BannerStat('Bills Issued', '$totalBills'),
                           const SizedBox(width: 24),
@@ -690,7 +690,7 @@ class _DashboardHome extends StatelessWidget {
                                 actionLabel: 'View All',
                                 onAction: () => onNavigate(4),
                                 child: expiringList.isEmpty
-                                    ? _Empty('No medicines expiring soon ✓',
+                                    ? _Empty('No Products expiring soon ✓',
                                         color: AppTheme.success)
                                     : Column(
                                         children: expiringList.map((m) {
@@ -745,7 +745,7 @@ class _DashboardHome extends StatelessWidget {
                             ),
                             _ActionChip(
                               icon: Icons.add_circle_outline,
-                              label: 'Add Medicine',
+                              label: 'Add Product',
                               color: AppTheme.success,
                               onTap: () => onNavigate(1),
                             ),
