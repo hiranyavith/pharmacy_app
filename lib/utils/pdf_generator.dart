@@ -54,7 +54,7 @@ Future<pw.MemoryImage> _sinhalaImg(
   final paraStyle = ui.ParagraphStyle(
     fontFamily: 'NotoSansSinhala',
     fontSize:   fontPx,
-    fontWeight: bold   ? ui.FontWeight.bold   : ui.FontWeight.normal,
+    fontWeight: bold   ? ui.FontWeight.w800   : ui.FontWeight.w800,
     fontStyle:  italic ? ui.FontStyle.italic  : ui.FontStyle.normal,
     textAlign:  centered ? ui.TextAlign.center : ui.TextAlign.left,
   );
@@ -63,7 +63,7 @@ Future<pw.MemoryImage> _sinhalaImg(
     color:      const ui.Color(0xFF000000),
     fontFamily: 'NotoSansSinhala',
     fontSize:   fontPx,
-    fontWeight: bold   ? ui.FontWeight.bold   : ui.FontWeight.normal,
+    fontWeight: bold   ? ui.FontWeight.w800   : ui.FontWeight.w800,
     fontStyle:  italic ? ui.FontStyle.italic  : ui.FontStyle.normal,
   );
 
@@ -125,7 +125,7 @@ class PdfGenerator {
   static const double _tearMm  = 30.0;
 
   // Font sizes (PDF points)
-  static const double _fsShop  = 10.5;
+  static const double _fsShop  = 13.0;
   static const double _fsAddr  =  7.5;
   static const double _fsMeta  =  7.5;
   static const double _fsItem  =  8.0;
