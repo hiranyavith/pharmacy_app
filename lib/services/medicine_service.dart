@@ -1,4 +1,6 @@
 // lib/services/medicine_service.dart
+import 'dart:math';
+
 import '../db/db_helper.dart';
 import '../models/medicine.dart';
 
@@ -130,10 +132,26 @@ class MedicineService {
     );
   }
 
-   Future<void> activate(int medicineId) async {
+  Future<void> activate(int medicineId) async {
     await _db.execute(
       'UPDATE medicines SET is_active = 1 WHERE id = :p0',
       [medicineId],
     );
+  }
+
+  Future<String> generateUniqueBarcode() async {
+    final rng = Random();
+    String barcode;
+    bool exists = true;
+
+    do {
+      final randomDigits = List.generate(10, (_) => rng.nextInt(10)).join();
+      barcode = '20$randomDigits';
+
+      final rows = await _db.query(
+          'SELECT id FROM medicines WHERE barcode = :p0 LIMIT 1', [barcode]);
+      exists = rows.isNotEmpty;
+    } while (exists);
+    return barcode;
   }
 }

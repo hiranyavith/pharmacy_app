@@ -195,7 +195,7 @@ class PdfGenerator {
 
     final siSubLbl = await _sinhalaImg('උප එකතුව  :',
         fontSizePt: _fsSmall, bold: true, widthMm: 36);
-    final siDisLbl = await _sinhalaImg('වට්ටම්       :',
+    final siDisLbl = await _sinhalaImg('ඔබගේ ලාභය  :',
         fontSizePt: _fsSmall, bold: true, widthMm: 36);
     final siTotLbl = await _sinhalaImg('මුළු එකතුව',
         fontSizePt: _fsTotal, bold: true, widthMm: 38);

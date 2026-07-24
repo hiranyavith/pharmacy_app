@@ -58,15 +58,15 @@ class _MedicineScreenState extends State<MedicineScreen> {
         context: context,
         builder: (_) => AlertDialog(
           title: const Text('Barcode not found'),
-          content: Text('No medicine is registered with barcode "$code".\n'
-              'Would you like to add a new medicine with this barcode?'),
+          content: Text('No Products is registered with barcode "$code".\n'
+              'Would you like to add a new Products with this barcode?'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context, false),
                 child: const Text('Cancel')),
             ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Add Medicine')),
+                child: const Text('Add Products')),
           ],
         ),
       );
@@ -102,7 +102,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Medicine'),
+        title: const Text('Delete Products'),
         content: Text('Delete "${m.name}"? This cannot be undone.'),
         actions: [
           TextButton(
@@ -226,7 +226,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
             ? const Center(child: CircularProgressIndicator())
             : _meds.isEmpty
                 ? const Center(
-                    child: Text('No medicines found.',
+                    child: Text('No Products found.',
                         style: TextStyle(color: AppTheme.textSub)))
                 : SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -471,6 +471,7 @@ class _MedicineFormState extends State<_MedicineForm> {
   final _formKey = GlobalKey<FormState>();
   final _svc = MedicineService();
   final _barcodeFocus = FocusNode();
+  bool _generatingBarcode = false;
 
   late TextEditingController _name, _cat, _price, _stock, _warnLimit, _barcode;
   DateTime? _expiry;
@@ -544,7 +545,7 @@ class _MedicineFormState extends State<_MedicineForm> {
       if (mounted) {
         Navigator.pop(context);
         showSuccess(context,
-            widget.medicine == null ? 'Medicine added.' : 'Medicine updated.');
+            widget.medicine == null ? 'Product added.' : 'Product updated.');
         widget.onSaved();
       }
     } catch (e) {
@@ -564,6 +565,26 @@ class _MedicineFormState extends State<_MedicineForm> {
     if (d != null) setState(() => _expiry = d);
   }
 
+  Future<void> _generateBarcode() async {
+    setState(() => _generatingBarcode = true);
+    try {
+      final code = await _svc.generateUniqueBarcode();
+      if (mounted) {
+        setState(() {
+          _barcode.text = code;
+          _barcodeJustScanned = true; // Flashes the green highlight feedback
+        });
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _barcodeJustScanned = false);
+        });
+      }
+    } catch (e) {
+      if (mounted) showError(context, 'Failed to generate barcode: $e');
+    } finally {
+      if (mounted) setState(() => _generatingBarcode = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.medicine != null;
@@ -572,7 +593,7 @@ class _MedicineFormState extends State<_MedicineForm> {
         Icon(isEdit ? Icons.edit : Icons.add_circle,
             color: AppTheme.primary, size: 22),
         const SizedBox(width: 8),
-        Text(isEdit ? 'Edit Medicine' : 'Add Medicine'),
+        Text(isEdit ? 'Edit Product' : 'Add Product'),
       ]),
       content: SizedBox(
         width: 480,
@@ -584,7 +605,7 @@ class _MedicineFormState extends State<_MedicineForm> {
               TextFormField(
                 controller: _name,
                 decoration: const InputDecoration(
-                  labelText: 'Medicine Name *',
+                  labelText: 'Product Name *',
                   prefixIcon: Icon(Icons.medication_outlined, size: 18),
                 ),
                 validator: (v) => v == null || v.isEmpty ? 'Required' : null,
@@ -629,21 +650,50 @@ class _MedicineFormState extends State<_MedicineForm> {
                           ? AppTheme.success
                           : AppTheme.textSub,
                     ),
-                    hintText: 'Scan with USB scanner or type manually',
-                    // Green "Scanned!" suffix when just filled by scanner
-                    suffixIcon: _barcodeJustScanned
-                        ? Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.check_circle,
-                                color: AppTheme.success, size: 18),
-                            const SizedBox(width: 4),
-                            Text('Scanned!',
-                                style: TextStyle(
-                                    color: AppTheme.success,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600)),
-                            const SizedBox(width: 8),
-                          ])
-                        : null,
+                    hintText: 'Scan with USB scanner or generate',
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_barcodeJustScanned) ...[
+                          const Icon(Icons.check_circle,
+                              color: AppTheme.success, size: 18),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Updated!',
+                            style: TextStyle(
+                              color: AppTheme.success,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        // ── Auto-Generate Button ────────────────────────────────────
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6.0),
+                          child: TextButton.icon(
+                            onPressed:
+                                _generatingBarcode ? null : _generateBarcode,
+                            icon: _generatingBarcode
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.auto_awesome, size: 16),
+                            label: const Text('Generate',
+                                style: TextStyle(fontSize: 12)),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   style: const TextStyle(fontFamily: 'monospace'),
                 ),
@@ -814,7 +864,7 @@ class _MedicineFormState extends State<_MedicineForm> {
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: Colors.white))
               : Icon(isEdit ? Icons.save_outlined : Icons.add, size: 16),
-          label: Text(isEdit ? 'Update' : 'Add Medicine'),
+          label: Text(isEdit ? 'Update' : 'Add Product'),
         ),
       ],
     );
