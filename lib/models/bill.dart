@@ -20,7 +20,7 @@ class CartItem {
 class BillItem {
   final int id;
   final int billId;
-  final int medicineId;
+  final int? medicineId;
   final String medName;
   int quantity;
   final double
@@ -42,7 +42,9 @@ class BillItem {
   factory BillItem.fromMap(Map<String, dynamic> m) => BillItem(
         id: int.tryParse(m['id']?.toString() ?? '0') ?? 0,
         billId: int.tryParse(m['bill_id']?.toString() ?? '0') ?? 0,
-        medicineId: int.tryParse(m['medicine_id']?.toString() ?? '0') ?? 0,
+         medicineId: m['medicine_id'] == null
+            ? null
+            : int.tryParse(m['medicine_id'].toString()),
         medName: m['med_name'] ?? '',
         quantity: int.tryParse(m['quantity']?.toString() ?? '0') ?? 0,
         unitPrice: double.tryParse(m['unit_price']?.toString() ?? '0') ?? 0,

@@ -17,27 +17,27 @@ class POSScreen extends StatefulWidget {
 }
 
 class _POSScreenState extends State<POSScreen> {
-  final _medSvc       = MedicineService();
-  final _billSvc      = BillingService();
-  final _searchCtrl   = TextEditingController();
+  final _medSvc = MedicineService();
+  final _billSvc = BillingService();
+  final _searchCtrl = TextEditingController();
   final _discountCtrl = TextEditingController(text: '0');
-  final _cashCtrl     = TextEditingController(text: '0');
+  final _cashCtrl = TextEditingController(text: '0');
   final _customerCtrl = TextEditingController();
-  final _searchFocus  = FocusNode();
+  final _searchFocus = FocusNode();
 
   // Per-cart-item controllers
-  final Map<int, TextEditingController> _qtyControllers   = {};
+  final Map<int, TextEditingController> _qtyControllers = {};
   final Map<int, TextEditingController> _priceControllers = {}; // ← NEW
 
   List<Medicine> _searchResults = [];
-  List<CartItem> _cart          = [];
-  bool           _searching     = false;
-  bool           _processing    = false;
-  PaymentType    _paymentType   = PaymentType.cash;
+  List<CartItem> _cart = [];
+  bool _searching = false;
+  bool _processing = false;
+  PaymentType _paymentType = PaymentType.cash;
 
   @override
   void dispose() {
-    for (final c in _qtyControllers.values)   c.dispose();
+    for (final c in _qtyControllers.values) c.dispose();
     for (final c in _priceControllers.values) c.dispose();
     _searchCtrl.dispose();
     _discountCtrl.dispose();
@@ -47,17 +47,49 @@ class _POSScreenState extends State<POSScreen> {
     super.dispose();
   }
 
+  int _customIdCounter = -1; // negative ids = "not in inventory" items
+
+  void _addCustomItem(String name, double price, int qty) {
+    final id = _customIdCounter--;
+    final virtual = Medicine(
+      id: id,
+      name: name,
+      category: 'Custom Item',
+      price: price,
+      stock: 999999, // no stock constraint for ad-hoc items
+      stockWarningLimit: 0,
+      isActive: true,
+    );
+    setState(() {
+      _cart.add(CartItem(medicine: virtual, quantity: qty));
+      _qtyControllers[id] = TextEditingController(text: '$qty');
+      _priceControllers[id] =
+          TextEditingController(text: price.toStringAsFixed(2));
+    });
+    _searchFocus.requestFocus();
+  }
+
   // ── Search ─────────────────────────────────────────────────────────────────
   Future<void> _search(String q) async {
-    if (q.isEmpty) { setState(() => _searchResults = []); return; }
+    if (q.isEmpty) {
+      setState(() => _searchResults = []);
+      return;
+    }
     setState(() => _searching = true);
     final r = await _medSvc.search(q);
-    if (mounted) setState(() { _searchResults = r; _searching = false; });
+    if (mounted)
+      setState(() {
+        _searchResults = r;
+        _searching = false;
+      });
   }
 
   // ── Add to cart ────────────────────────────────────────────────────────────
   void _addToCart(Medicine m) {
-    if (m.stock <= 0) { showError(context, '${m.name} is out of stock.'); return; }
+    if (m.stock <= 0) {
+      showError(context, '${m.name} is out of stock.');
+      return;
+    }
     setState(() {
       final idx = _cart.indexWhere((c) => c.medicine.id == m.id);
       if (idx >= 0) {
@@ -69,10 +101,9 @@ class _POSScreenState extends State<POSScreen> {
         }
       } else {
         _cart.add(CartItem(medicine: m));
-        _qtyControllers[m.id!] =
-            TextEditingController(text: '1');
+        _qtyControllers[m.id!] = TextEditingController(text: '1');
         _priceControllers[m.id!] =
-            TextEditingController(text: m.price.toStringAsFixed(2));  // ← NEW
+            TextEditingController(text: m.price.toStringAsFixed(2)); // ← NEW
       }
       _searchResults = [];
       _searchCtrl.clear();
@@ -82,7 +113,7 @@ class _POSScreenState extends State<POSScreen> {
 
   // ── Qty stepper ────────────────────────────────────────────────────────────
   void _stepQty(int cartIdx, int delta) {
-    final item   = _cart[cartIdx];
+    final item = _cart[cartIdx];
     final newQty = (item.quantity + delta).clamp(1, item.medicine.stock);
     setState(() => item.quantity = newQty);
     _qtyControllers[item.medicine.id!]?.text = '$newQty';
@@ -91,7 +122,7 @@ class _POSScreenState extends State<POSScreen> {
   void _onQtyInput(int cartIdx, String val) {
     final parsed = int.tryParse(val);
     if (parsed == null || parsed < 1) return;
-    final item    = _cart[cartIdx];
+    final item = _cart[cartIdx];
     final clamped = parsed.clamp(1, item.medicine.stock);
     setState(() => item.quantity = clamped);
     if (clamped != parsed)
@@ -103,7 +134,8 @@ class _POSScreenState extends State<POSScreen> {
     final parsed = double.tryParse(val);
     setState(() {
       // null / 0 / negative → revert to MRP (no override)
-      _cart[cartIdx].sellingPrice = (parsed != null && parsed > 0) ? parsed : null;
+      _cart[cartIdx].sellingPrice =
+          (parsed != null && parsed > 0) ? parsed : null;
     });
   }
 
@@ -126,43 +158,48 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   void _clearCart() {
-    for (final c in _qtyControllers.values)   c.dispose();
+    for (final c in _qtyControllers.values) c.dispose();
     for (final c in _priceControllers.values) c.dispose();
     _qtyControllers.clear();
     _priceControllers.clear();
     setState(() => _cart.clear());
   }
-DiscountType _discountType = DiscountType.rs;
+
+  DiscountType _discountType = DiscountType.rs;
   // ── Totals ─────────────────────────────────────────────────────────────────
   double get _subtotal => _cart.fold(0, (s, i) => s + i.lineTotal);
   double get _discountInput => double.tryParse(_discountCtrl.text) ?? 0;
-double get _discountAmount {
-  if (_discountType == DiscountType.percent) {
-    return (_subtotal * _discountInput / 100).clamp(0, _subtotal);
+  double get _discountAmount {
+    if (_discountType == DiscountType.percent) {
+      return (_subtotal * _discountInput / 100).clamp(0, _subtotal);
+    }
+    return _discountInput.clamp(0, _subtotal);
   }
-  return _discountInput.clamp(0, _subtotal);
-}
-double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
-  double get _cash     => double.tryParse(_cashCtrl.text) ?? 0;
-  double get _change   => (_cash - _total).clamp(0, double.infinity);
-  bool   get _isCard   => _paymentType == PaymentType.card;
+
+  double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
+  double get _cash => double.tryParse(_cashCtrl.text) ?? 0;
+  double get _change => (_cash - _total).clamp(0, double.infinity);
+  bool get _isCard => _paymentType == PaymentType.card;
 
   // ── Process sale ───────────────────────────────────────────────────────────
   Future<void> _processSale() async {
-    if (_cart.isEmpty) { showError(context, 'Cart is empty.'); return; }
+    if (_cart.isEmpty) {
+      showError(context, 'Cart is empty.');
+      return;
+    }
     setState(() => _processing = true);
     try {
       final bill = await _billSvc.createBill(
         _cart,
-        discount:     _discountInput,
+        discount: _discountInput,
         discountType: _discountType,
-        given:        _isCard ? _total : _cash,
-        paymentType:  _paymentType,
+        given: _isCard ? _total : _cash,
+        paymentType: _paymentType,
         customerName: _customerCtrl.text.trim(),
       );
       _clearCart();
       _discountCtrl.text = '0';
-      _cashCtrl.text     = '0';
+      _cashCtrl.text = '0';
       _customerCtrl.clear();
       if (mounted) {
         showSuccess(context, 'Bill ${bill.invoiceNo} created!');
@@ -176,9 +213,9 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
   }
 
   void _showBillDialog(Bill bill) => showDialog(
-    context: context,
-    builder: (_) => _BillPreviewDialog(bill: bill),
-  ).then((_) => _searchFocus.requestFocus());
+        context: context,
+        builder: (_) => _BillPreviewDialog(bill: bill),
+      ).then((_) => _searchFocus.requestFocus());
 
   // ── Quick cash amounts ─────────────────────────────────────────────────────
   List<double> _quickAmounts() {
@@ -197,29 +234,31 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
     final fmt = NumberFormat('#,##0.00');
 
     return Row(children: [
-
       // ══════════════════════════════════════════════════════
       // LEFT: Search + Cart
       // ══════════════════════════════════════════════════════
       Expanded(
         flex: 3,
         child: Column(children: [
-
           // ── Top bar ──────────────────────────────────────
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(children: [
-              const Icon(Icons.point_of_sale, color: AppTheme.primary, size: 22),
+              const Icon(Icons.point_of_sale,
+                  color: AppTheme.primary, size: 22),
               const SizedBox(width: 10),
               const Text('POS / Billing',
-                  style: TextStyle(fontSize: 18,
-                      fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textMain)),
               const Spacer(),
               if (_cart.isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(right: 12),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppTheme.primary.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(12),
@@ -227,7 +266,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                   child: Text('${_cart.length} item(s)',
                       style: const TextStyle(
                           color: AppTheme.primary,
-                          fontWeight: FontWeight.w600, fontSize: 12)),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12)),
                 ),
               if (_cart.isNotEmpty)
                 TextButton.icon(
@@ -240,6 +280,20 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 6)),
                 ),
+              // ── NEW: add a non-inventory item ────────────────────
+              TextButton.icon(
+                onPressed: () => showDialog(
+                  context: context,
+                  builder: (_) => _CustomItemDialog(onAdd: _addCustomItem),
+                ),
+                icon: const Icon(Icons.add_shopping_cart,
+                    size: 16, color: AppTheme.warning),
+                label: const Text('Custom Item',
+                    style: TextStyle(color: AppTheme.warning, fontSize: 13)),
+                style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6)),
+              ),
               const SizedBox(width: 8),
               SizedBox(
                 width: 300,
@@ -278,7 +332,7 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                 separatorBuilder: (_, __) =>
                     const Divider(height: 1, indent: 56),
                 itemBuilder: (_, i) {
-                  final m      = _searchResults[i];
+                  final m = _searchResults[i];
                   final inCart = _cart.any((c) => c.medicine.id == m.id);
                   return ListTile(
                     dense: true,
@@ -306,7 +360,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                           ),
                           child: const Text('In cart',
                               style: TextStyle(
-                                  fontSize: 10, color: AppTheme.success,
+                                  fontSize: 10,
+                                  color: AppTheme.success,
                                   fontWeight: FontWeight.w600)),
                         ),
                       ],
@@ -317,7 +372,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                       Text('Rs. ${fmt.format(m.price)}',
                           style: const TextStyle(
                               color: AppTheme.primary,
-                              fontWeight: FontWeight.w600, fontSize: 13)),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13)),
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.all(4),
@@ -344,19 +400,19 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
             child: _cart.isEmpty
                 ? Center(
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.shopping_cart_outlined,
-                          size: 64, color: Colors.grey[200]),
-                      const SizedBox(height: 10),
-                      const Text('Cart is empty',
-                          style: TextStyle(
-                              color: AppTheme.textSub,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500)),
-                      const SizedBox(height: 4),
-                      const Text('Search and add medicines above',
-                          style: TextStyle(
-                              color: AppTheme.textSub, fontSize: 12)),
-                    ]))
+                    Icon(Icons.shopping_cart_outlined,
+                        size: 64, color: Colors.grey[200]),
+                    const SizedBox(height: 10),
+                    const Text('Cart is empty',
+                        style: TextStyle(
+                            color: AppTheme.textSub,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 4),
+                    const Text('Search and add medicines above',
+                        style:
+                            TextStyle(color: AppTheme.textSub, fontSize: 12)),
+                  ]))
                 : Column(children: [
                     // ── Table header ──────────────────────
                     Container(
@@ -364,25 +420,37 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                           horizontal: 20, vertical: 8),
                       color: AppTheme.primary.withOpacity(0.04),
                       child: const Row(children: [
-                        Expanded(child: Text('Medicine',
-                            style: TextStyle(fontWeight: FontWeight.w600,
-                                fontSize: 12, color: AppTheme.textSub))),
-                        SizedBox(width: 160,
+                        Expanded(
+                            child: Text('Medicine',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    color: AppTheme.textSub))),
+                        SizedBox(
+                            width: 160,
                             child: Text('Quantity',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(fontWeight: FontWeight.w600,
-                                    fontSize: 12, color: AppTheme.textSub))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    color: AppTheme.textSub))),
                         // ← NEW column header
-                        SizedBox(width: 130,
+                        SizedBox(
+                            width: 130,
                             child: Text('Selling Price',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(fontWeight: FontWeight.w600,
-                                    fontSize: 12, color: AppTheme.textSub))),
-                        SizedBox(width: 90,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    color: AppTheme.textSub))),
+                        SizedBox(
+                            width: 90,
                             child: Text('Total',
                                 textAlign: TextAlign.right,
-                                style: TextStyle(fontWeight: FontWeight.w600,
-                                    fontSize: 12, color: AppTheme.textSub))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    color: AppTheme.textSub))),
                         SizedBox(width: 36),
                       ]),
                     ),
@@ -396,15 +464,14 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                         separatorBuilder: (_, __) =>
                             const Divider(height: 1, indent: 20),
                         itemBuilder: (_, i) {
-                          final item       = _cart[i];
-                          final medId      = item.medicine.id!;
-                          final qtyCtrl    = _qtyControllers[medId]
-                              ?? TextEditingController(text: '${item.quantity}');
-                          final priceCtrl  = _priceControllers[medId]
-                              ?? TextEditingController(
+                          final item = _cart[i];
+                          final medId = item.medicine.id!;
+                          final qtyCtrl = _qtyControllers[medId] ??
+                              TextEditingController(text: '${item.quantity}');
+                          final priceCtrl = _priceControllers[medId] ??
+                              TextEditingController(
                                   text: item.medicine.price.toStringAsFixed(2));
-                          final isPriceOverridden =
-                              item.sellingPrice != null &&
+                          final isPriceOverridden = item.sellingPrice != null &&
                               item.sellingPrice != item.medicine.price;
 
                           return Padding(
@@ -413,16 +480,35 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-
                                 // Medicine info
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(item.medicine.name,
                                           style: const TextStyle(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 13)),
+                                      if (item.medicine.id != null &&
+                                          item.medicine.id! < 0) ...[
+                                        const SizedBox(height: 2),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.warning
+                                                .withOpacity(0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                          ),
+                                          child: const Text('Not in inventory',
+                                              style: TextStyle(
+                                                  fontSize: 9,
+                                                  color: AppTheme.warning,
+                                                  fontWeight: FontWeight.w600)),
+                                        ),
+                                      ],
                                       const SizedBox(height: 2),
                                       Row(children: [
                                         Text(
@@ -448,7 +534,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                                   width: 160,
                                   height: 38,
                                   decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.grey[300]!),
+                                    border:
+                                        Border.all(color: Colors.grey[300]!),
                                     borderRadius: BorderRadius.circular(8),
                                     color: Colors.white,
                                   ),
@@ -465,7 +552,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                                         textAlign: TextAlign.center,
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
-                                          FilteringTextInputFormatter.digitsOnly,
+                                          FilteringTextInputFormatter
+                                              .digitsOnly,
                                           LengthLimitingTextInputFormatter(4),
                                         ],
                                         style: const TextStyle(
@@ -478,8 +566,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                                           enabledBorder: InputBorder.none,
                                           focusedBorder: InputBorder.none,
                                           isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(
-                                              vertical: 8),
+                                          contentPadding:
+                                              EdgeInsets.symmetric(vertical: 8),
                                         ),
                                         onChanged: (v) => _onQtyInput(i, v),
                                         onSubmitted: (v) {
@@ -490,7 +578,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                                     ),
                                     StepperBtn(
                                       icon: Icons.add,
-                                      enabled: item.quantity < item.medicine.stock,
+                                      enabled:
+                                          item.quantity < item.medicine.stock,
                                       isLeft: false,
                                       onTap: () => _stepQty(i, 1),
                                     ),
@@ -531,9 +620,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                                       child: TextField(
                                         controller: priceCtrl,
                                         textAlign: TextAlign.center,
-                                        keyboardType:
-                                            const TextInputType.numberWithOptions(
-                                                decimal: true),
+                                        keyboardType: const TextInputType
+                                            .numberWithOptions(decimal: true),
                                         inputFormatters: [
                                           FilteringTextInputFormatter.allow(
                                               RegExp(r'^\d+\.?\d{0,2}')),
@@ -550,8 +638,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                                           enabledBorder: InputBorder.none,
                                           focusedBorder: InputBorder.none,
                                           isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(
-                                              vertical: 8),
+                                          contentPadding:
+                                              EdgeInsets.symmetric(vertical: 8),
                                         ),
                                         onChanged: (v) => _onPriceInput(i, v),
                                         onSubmitted: (v) {
@@ -583,8 +671,7 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                                 SizedBox(
                                   width: 90,
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.end,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text(
@@ -652,17 +739,16 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                     c.sellingPrice != c.medicine.price)) ...[
                   const SizedBox(width: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: AppTheme.warning.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                          color: AppTheme.warning.withOpacity(0.4)),
+                      border:
+                          Border.all(color: AppTheme.warning.withOpacity(0.4)),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.edit,
-                          size: 11, color: AppTheme.warning),
+                      const Icon(Icons.edit, size: 11, color: AppTheme.warning),
                       const SizedBox(width: 4),
                       const Text('Custom price applied',
                           style: TextStyle(
@@ -704,8 +790,10 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                     color: AppTheme.primary, size: 18),
                 const SizedBox(width: 8),
                 const Text('Order Summary',
-                    style: TextStyle(fontSize: 15,
-                        fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textMain)),
               ]),
               const SizedBox(height: 16),
 
@@ -734,69 +822,84 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
               const SizedBox(height: 10),
 
               // Discount
-             Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text('Discount:', style: TextStyle(color: AppTheme.textSub, fontSize: 13)),
-        // Toggle Segmented Control (Rs / %)
-        Container(
-          height: 28,
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.grey[300]!),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _DiscountToggleBtn(
-                label: 'Rs.',
-                selected: _discountType == DiscountType.rs,
-                onTap: () => setState(() => _discountType = DiscountType.rs),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Discount:',
+                          style:
+                              TextStyle(color: AppTheme.textSub, fontSize: 13)),
+                      // Toggle Segmented Control (Rs / %)
+                      Container(
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _DiscountToggleBtn(
+                              label: 'Rs.',
+                              selected: _discountType == DiscountType.rs,
+                              onTap: () => setState(
+                                  () => _discountType = DiscountType.rs),
+                            ),
+                            _DiscountToggleBtn(
+                              label: '%',
+                              selected: _discountType == DiscountType.percent,
+                              onTap: () => setState(
+                                  () => _discountType = DiscountType.percent),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _discountCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d+\.?\d{0,2}')),
+                          ],
+                          decoration: InputDecoration(
+                            isDense: true,
+                            prefixText: _discountType == DiscountType.rs
+                                ? 'Rs. '
+                                : null,
+                            suffixText: _discountType == DiscountType.percent
+                                ? '%'
+                                : null,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_discountType == DiscountType.percent &&
+                      _discountInput > 0) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Deduction: -Rs. ${fmt.format(_discountAmount)}',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.warning,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ],
               ),
-              _DiscountToggleBtn(
-                label: '%',
-                selected: _discountType == DiscountType.percent,
-                onTap: () => setState(() => _discountType = DiscountType.percent),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-    const SizedBox(height: 8),
-    Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _discountCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-            ],
-            decoration: InputDecoration(
-              isDense: true,
-              prefixText: _discountType == DiscountType.rs ? 'Rs. ' : null,
-              suffixText: _discountType == DiscountType.percent ? '%' : null,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-        ),
-      ],
-    ),
-    if (_discountType == DiscountType.percent && _discountInput > 0) ...[
-      const SizedBox(height: 4),
-      Text(
-        'Deduction: -Rs. ${fmt.format(_discountAmount)}',
-        style: const TextStyle(fontSize: 11, color: AppTheme.warning, fontWeight: FontWeight.w600),
-      ),
-    ],
-  ],
-),
               const SizedBox(height: 12),
               const Divider(),
 
@@ -870,8 +973,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                 const SizedBox(height: 10),
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: _change > 0
                         ? AppTheme.success.withOpacity(0.08)
@@ -886,8 +989,8 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                   child: Row(children: [
                     Icon(Icons.change_circle_outlined,
                         size: 18,
-                        color: _change > 0
-                            ? AppTheme.success : AppTheme.textSub),
+                        color:
+                            _change > 0 ? AppTheme.success : AppTheme.textSub),
                     const SizedBox(width: 8),
                     const Text('Change:',
                         style: TextStyle(
@@ -898,18 +1001,19 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                             color: _change > 0
-                                ? AppTheme.success : AppTheme.textSub)),
+                                ? AppTheme.success
+                                : AppTheme.textSub)),
                   ]),
                 ),
               ] else ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: AppTheme.primary.withOpacity(0.06),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                        color: AppTheme.primary.withOpacity(0.2)),
+                    border:
+                        Border.all(color: AppTheme.primary.withOpacity(0.2)),
                   ),
                   child: Row(children: [
                     const Icon(Icons.credit_card,
@@ -932,20 +1036,18 @@ double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed:
-                      _processing || _cart.isEmpty ? null : _processSale,
+                  onPressed: _processing || _cart.isEmpty ? null : _processSale,
                   icon: _processing
                       ? const SizedBox(
-                          width: 18, height: 18,
+                          width: 18,
+                          height: 18,
                           child: CircularProgressIndicator(
                               color: Colors.white, strokeWidth: 2))
                       : Icon(
                           _isCard ? Icons.credit_card : Icons.payments_outlined,
                           size: 20),
                   label: Text(
-                    _isCard
-                        ? 'Process Card Payment'
-                        : 'Process Cash Sale',
+                    _isCard ? 'Process Card Payment' : 'Process Cash Sale',
                     style: const TextStyle(
                         fontSize: 15, fontWeight: FontWeight.w700),
                   ),
@@ -981,26 +1083,28 @@ class _QuickCashBtn extends StatelessWidget {
       {required this.label, required this.selected, required this.onTap});
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: selected
-            ? AppTheme.success : AppTheme.success.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: selected
-              ? AppTheme.success : AppTheme.success.withOpacity(0.3),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppTheme.success
+                : AppTheme.success.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: selected
+                  ? AppTheme.success
+                  : AppTheme.success.withOpacity(0.3),
+            ),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? Colors.white : AppTheme.success)),
         ),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : AppTheme.success)),
-    ),
-  );
+      );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1013,32 +1117,36 @@ class _PaymentBtn extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   const _PaymentBtn(
-      {required this.label, required this.icon,
-       required this.selected, required this.color, required this.onTap});
+      {required this.label,
+      required this.icon,
+      required this.selected,
+      required this.color,
+      required this.onTap});
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: selected ? color : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-            color: selected ? color : Colors.grey[300]!,
-            width: selected ? 1.5 : 1),
-      ),
-      child: Column(children: [
-        Icon(icon, size: 22,
-            color: selected ? Colors.white : Colors.grey[500]),
-        const SizedBox(height: 4),
-        Text(label,
-            style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w600,
-                color: selected ? Colors.white : Colors.grey[600])),
-      ]),
-    ),
-  );
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? color : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: selected ? color : Colors.grey[300]!,
+                width: selected ? 1.5 : 1),
+          ),
+          child: Column(children: [
+            Icon(icon,
+                size: 22, color: selected ? Colors.white : Colors.grey[500]),
+            const SizedBox(height: 4),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? Colors.white : Colors.grey[600])),
+          ]),
+        ),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1052,19 +1160,20 @@ class _SummaryRow extends StatelessWidget {
       {this.large = false, this.color = AppTheme.textMain});
   @override
   Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-      Text(label,
-          style: TextStyle(
-              color: large ? color : AppTheme.textSub,
-              fontWeight: large ? FontWeight.bold : FontWeight.normal,
-              fontSize: large ? 16 : 13)),
-      Text(value,
-          style: TextStyle(
-              color: color, fontWeight: FontWeight.bold,
-              fontSize: large ? 18 : 13)),
-    ],
-  );
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  color: large ? color : AppTheme.textSub,
+                  fontWeight: large ? FontWeight.bold : FontWeight.normal,
+                  fontSize: large ? 16 : 13)),
+          Text(value,
+              style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: large ? 18 : 13)),
+        ],
+      );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1076,9 +1185,9 @@ class _BillPreviewDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fmt     = NumberFormat('#,##0.00');
+    final fmt = NumberFormat('#,##0.00');
     final dateFmt = DateFormat('dd MMM yyyy  hh:mm a');
-    final isCard  = bill.paymentType == PaymentType.card;
+    final isCard = bill.paymentType == PaymentType.card;
 
     return AlertDialog(
       title: Row(children: [
@@ -1088,180 +1197,217 @@ class _BillPreviewDialog extends StatelessWidget {
       ]),
       content: SizedBox(
         width: 440,
-        child: Column(mainAxisSize: MainAxisSize.min,
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-          // Invoice header
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppTheme.success.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.success.withOpacity(0.2)),
-            ),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(bill.invoiceNo,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 15)),
-                    Text(dateFmt.format(bill.createdAt),
-                        style: const TextStyle(
-                            color: AppTheme.textSub, fontSize: 12)),
-                  ]),
-                ),
-                Text('Rs. ${fmt.format(bill.total)}',
-                    style: const TextStyle(
-                        color: AppTheme.success,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20)),
-              ]),
-              if (bill.customerName.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Row(children: [
-                  const Icon(Icons.person_outline,
-                      size: 13, color: AppTheme.textSub),
-                  const SizedBox(width: 4),
-                  Text(bill.customerName,
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w500)),
-                ]),
-              ],
-              const SizedBox(height: 8),
+              // Invoice header
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: isCard
-                      ? AppTheme.primary.withOpacity(0.10)
-                      : AppTheme.success.withOpacity(0.10),
+                  color: AppTheme.success.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.success.withOpacity(0.2)),
                 ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(
-                      isCard ? Icons.credit_card : Icons.payments_outlined,
-                      size: 12,
-                      color: isCard ? AppTheme.primary : AppTheme.success),
-                  const SizedBox(width: 4),
-                  Text(isCard ? 'Card Payment' : 'Cash Payment',
-                      style: TextStyle(
-                          fontSize: 11, fontWeight: FontWeight.w600,
-                          color:
-                              isCard ? AppTheme.primary : AppTheme.success)),
-                ]),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(bill.invoiceNo,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15)),
+                                Text(dateFmt.format(bill.createdAt),
+                                    style: const TextStyle(
+                                        color: AppTheme.textSub, fontSize: 12)),
+                              ]),
+                        ),
+                        Text('Rs. ${fmt.format(bill.total)}',
+                            style: const TextStyle(
+                                color: AppTheme.success,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 20)),
+                      ]),
+                      if (bill.customerName.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          const Icon(Icons.person_outline,
+                              size: 13, color: AppTheme.textSub),
+                          const SizedBox(width: 4),
+                          Text(bill.customerName,
+                              style: const TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w500)),
+                        ]),
+                      ],
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isCard
+                              ? AppTheme.primary.withOpacity(0.10)
+                              : AppTheme.success.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(
+                              isCard
+                                  ? Icons.credit_card
+                                  : Icons.payments_outlined,
+                              size: 12,
+                              color:
+                                  isCard ? AppTheme.primary : AppTheme.success),
+                          const SizedBox(width: 4),
+                          Text(isCard ? 'Card Payment' : 'Cash Payment',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: isCard
+                                      ? AppTheme.primary
+                                      : AppTheme.success)),
+                        ]),
+                      ),
+                    ]),
               ),
-            ]),
-          ),
-          const SizedBox(height: 14),
+              const SizedBox(height: 14),
 
-          // Line items — show custom price tag if overridden
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[200]!),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(children: [
+              // Line items — show custom price tag if overridden
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(7),
-                    topRight: Radius.circular(7),
-                  ),
+                  border: Border.all(color: Colors.grey[200]!),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(children: [
-                  Expanded(child: Text('Medicine',
-                      style: TextStyle(fontWeight: FontWeight.w600,
-                          fontSize: 11, color: AppTheme.textSub))),
-                  SizedBox(width: 40, child: Text('Qty',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontWeight: FontWeight.w600,
-                          fontSize: 11, color: AppTheme.textSub))),
-                  SizedBox(width: 80, child: Text('Price',
-                      textAlign: TextAlign.right,
-                      style: TextStyle(fontWeight: FontWeight.w600,
-                          fontSize: 11, color: AppTheme.textSub))),
-                  SizedBox(width: 80, child: Text('Amount',
-                      textAlign: TextAlign.right,
-                      style: TextStyle(fontWeight: FontWeight.w600,
-                          fontSize: 11, color: AppTheme.textSub))),
+                child: Column(children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(7),
+                        topRight: Radius.circular(7),
+                      ),
+                    ),
+                    child: const Row(children: [
+                      Expanded(
+                          child: Text('Medicine',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                  color: AppTheme.textSub))),
+                      SizedBox(
+                          width: 40,
+                          child: Text('Qty',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                  color: AppTheme.textSub))),
+                      SizedBox(
+                          width: 80,
+                          child: Text('Price',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                  color: AppTheme.textSub))),
+                      SizedBox(
+                          width: 80,
+                          child: Text('Amount',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                  color: AppTheme.textSub))),
+                    ]),
+                  ),
+                  ...bill.items.map((item) {
+                    final isCustomPrice =
+                        item.unitPrice != item.mrp && item.mrp > 0;
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                          border: Border(
+                              top: BorderSide(color: Colors.grey[100]!))),
+                      child: Row(children: [
+                        Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              Text(item.medName,
+                                  style: const TextStyle(fontSize: 13)),
+                              if (isCustomPrice)
+                                Text('MRP: Rs. ${fmt.format(item.mrp)}',
+                                    style: const TextStyle(
+                                        fontSize: 10,
+                                        color: AppTheme.textSub,
+                                        decoration:
+                                            TextDecoration.lineThrough)),
+                            ])),
+                        SizedBox(
+                            width: 40,
+                            child: Text('×${item.quantity}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    color: AppTheme.textSub, fontSize: 12))),
+                        SizedBox(
+                            width: 80,
+                            child: Text('Rs. ${fmt.format(item.unitPrice)}',
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: isCustomPrice
+                                        ? AppTheme.warning
+                                        : AppTheme.textMain,
+                                    fontWeight: isCustomPrice
+                                        ? FontWeight.w600
+                                        : FontWeight.normal))),
+                        SizedBox(
+                            width: 80,
+                            child: Text('Rs. ${fmt.format(item.lineTotal)}',
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500))),
+                      ]),
+                    );
+                  }),
                 ]),
               ),
-              ...bill.items.map((item) {
-                final isCustomPrice = item.unitPrice != item.mrp && item.mrp > 0;
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                      border: Border(
-                          top: BorderSide(color: Colors.grey[100]!))),
-                  child: Row(children: [
-                    Expanded(child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      Text(item.medName,
-                          style: const TextStyle(fontSize: 13)),
-                      if (isCustomPrice)
-                        Text('MRP: Rs. ${fmt.format(item.mrp)}',
-                            style: const TextStyle(
-                                fontSize: 10,
-                                color: AppTheme.textSub,
-                                decoration: TextDecoration.lineThrough)),
-                    ])),
-                    SizedBox(width: 40,
-                        child: Text('×${item.quantity}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                color: AppTheme.textSub, fontSize: 12))),
-                    SizedBox(width: 80,
-                        child: Text('Rs. ${fmt.format(item.unitPrice)}',
-                            textAlign: TextAlign.right,
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: isCustomPrice
-                                    ? AppTheme.warning
-                                    : AppTheme.textMain,
-                                fontWeight: isCustomPrice
-                                    ? FontWeight.w600
-                                    : FontWeight.normal))),
-                    SizedBox(width: 80,
-                        child: Text('Rs. ${fmt.format(item.lineTotal)}',
-                            textAlign: TextAlign.right,
-                            style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500))),
-                  ]),
-                );
-              }),
-            ]),
-          ),
 
-          if (!isCard && bill.given > 0) ...[
-            const SizedBox(height: 10),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              const Text('Cash Given:',
-                  style: TextStyle(color: AppTheme.textSub, fontSize: 12)),
-              Text('Rs. ${fmt.format(bill.given)}',
-                  style: const TextStyle(fontSize: 12)),
+              if (!isCard && bill.given > 0) ...[
+                const SizedBox(height: 10),
+                Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Cash Given:',
+                          style:
+                              TextStyle(color: AppTheme.textSub, fontSize: 12)),
+                      Text('Rs. ${fmt.format(bill.given)}',
+                          style: const TextStyle(fontSize: 12)),
+                    ]),
+                const SizedBox(height: 4),
+                Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Change:',
+                          style: TextStyle(
+                              color: AppTheme.success,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13)),
+                      Text('Rs. ${fmt.format(bill.change)}',
+                          style: const TextStyle(
+                              color: AppTheme.success,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14)),
+                    ]),
+              ],
             ]),
-            const SizedBox(height: 4),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              const Text('Change:',
-                  style: TextStyle(color: AppTheme.success,
-                      fontWeight: FontWeight.w600, fontSize: 13)),
-              Text('Rs. ${fmt.format(bill.change)}',
-                  style: const TextStyle(
-                      color: AppTheme.success,
-                      fontWeight: FontWeight.bold, fontSize: 14)),
-            ]),
-          ],
-        ]),
       ),
       actions: [
         TextButton(
@@ -1311,6 +1457,113 @@ class _DiscountToggleBtn extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CustomItemDialog extends StatefulWidget {
+  final void Function(String name, double price, int qty) onAdd;
+  const _CustomItemDialog({required this.onAdd});
+  @override
+  State<_CustomItemDialog> createState() => _CustomItemDialogState();
+}
+
+class _CustomItemDialogState extends State<_CustomItemDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _price = TextEditingController();
+  final _qty = TextEditingController(text: '1');
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _price.dispose();
+    _qty.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(children: [
+        const Icon(Icons.add_shopping_cart, color: AppTheme.warning, size: 22),
+        const SizedBox(width: 8),
+        const Text('Add Item Not In Inventory'),
+      ]),
+      content: SizedBox(
+        width: 380,
+        child: Form(
+          key: _formKey,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.warning.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(children: [
+                Icon(Icons.info_outline, size: 15, color: AppTheme.warning),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'This item will appear on the bill but won\'t affect stock, '
+                    'since it isn\'t a registered product.',
+                    style: TextStyle(fontSize: 11, color: AppTheme.warning),
+                  ),
+                ),
+              ]),
+            ),
+            TextFormField(
+              controller: _name,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Item Name *'),
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'Required' : null,
+            ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _price,
+                  decoration: const InputDecoration(
+                      labelText: 'Price (Rs.) *', prefixText: 'Rs. '),
+                  keyboardType: TextInputType.number,
+                  validator: (v) =>
+                      double.tryParse(v ?? '') == null ? 'Invalid' : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextFormField(
+                  controller: _qty,
+                  decoration: const InputDecoration(labelText: 'Qty *'),
+                  keyboardType: TextInputType.number,
+                  validator: (v) {
+                    final n = int.tryParse(v ?? '');
+                    return (n == null || n <= 0) ? 'Invalid' : null;
+                  },
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.add, size: 16),
+          label: const Text('Add to Bill'),
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) return;
+            widget.onAdd(_name.text.trim(), double.parse(_price.text),
+                int.parse(_qty.text));
+            Navigator.pop(context);
+          },
+        ),
+      ],
     );
   }
 }

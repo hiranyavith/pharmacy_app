@@ -44,7 +44,7 @@ class BillingService {
     final total = subtotal - discountAmount.toDouble();
     change = given > 0 ? (given - total).clamp(0, double.infinity) : 0.0;
     final paymentStr = paymentType == PaymentType.card ? 'card' : 'cash';
-final discountStr = discountType == DiscountType.percent ? 'percent' : 'rs';
+    final discountStr = discountType == DiscountType.percent ? 'percent' : 'rs';
     final res = await _db.execute(
       '''INSERT INTO bills
            (invoice_no,subtotal,discount,discount_type,total,given_price,change_price,
@@ -70,13 +70,14 @@ final discountStr = discountType == DiscountType.percent ? 'percent' : 'rs';
       final unitPrice = item.effectivePrice; // may differ from medicine.price
       final mrp = item.medicine.price;
       final lineTotal = unitPrice * item.quantity;
+      final isCustom = item.medicine.id == null || item.medicine.id! < 0;
       await _db.execute(
         '''INSERT INTO bill_items
              (bill_id,medicine_id,med_name,quantity,unit_price,line_total,mrp)
            VALUES (:p0,:p1,:p2,:p3,:p4,:p5,:p6)''',
         [
           billId,
-          item.medicine.id,
+          isCustom ? null : item.medicine.id,
           item.medicine.name,
           item.quantity,
           unitPrice,
@@ -84,7 +85,9 @@ final discountStr = discountType == DiscountType.percent ? 'percent' : 'rs';
           mrp
         ],
       );
-      await _med.reduceStock(item.medicine.id!, item.quantity);
+      if (!isCustom) {
+        await _med.reduceStock(item.medicine.id!, item.quantity);
+      }
     }
 
     return Bill(
@@ -99,17 +102,18 @@ final discountStr = discountType == DiscountType.percent ? 'percent' : 'rs';
       paymentType: paymentType,
       customerName: customerName.trim(),
       createdAt: DateTime.now(),
-      items: cart
-          .map((c) => BillItem(
-                id: 0,
-                billId: billId,
-                medicineId: c.medicine.id!,
-                medName: c.medicine.name,
-                quantity: c.quantity,
-                unitPrice: c.effectivePrice,
-                mrp: c.medicine.price,
-              ))
-          .toList(),
+      items: cart.map((c) {
+        final isCustom = c.medicine.id == null || c.medicine.id! < 0;
+        return BillItem(
+          id: 0,
+          billId: billId,
+          medicineId: isCustom ? null : c.medicine.id,
+          medName: c.medicine.name,
+          quantity: c.quantity,
+          unitPrice: c.effectivePrice,
+          mrp: c.medicine.price,
+        );
+      }).toList(),
     );
   }
 
@@ -164,8 +168,7 @@ final discountStr = discountType == DiscountType.percent ? 'percent' : 'rs';
 
   Future<double> getMonthlySales() async {
     final now = DateTime.now();
-    final monthStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    final monthStr = '${now.year}-${now.month.toString().padLeft(2, '0')}';
 
     final rows = await _db.query(
       '''SELECT SUM(total) AS monthly_total 
@@ -183,16 +186,20 @@ final discountStr = discountType == DiscountType.percent ? 'percent' : 'rs';
   // ── Update existing bill ──────────────────────────────────────────────────
   Future<void> updateBill(Bill bill) async {
     final oldItems = await getBillItems(bill.id);
-    final newItemByMedId = {for (final n in bill.items) n.medicineId: n};
+    final newItemById = {
+      for (final n in bill.items) n.id: n
+    }; // ← keyed by row id, not medicineId
 
     for (final old in oldItems) {
-      final newItem = newItemByMedId[old.medicineId];
+      if (old.medicineId == null) continue; // custom items never touch stock
+
+      final newItem = newItemById[old.id];
       if (newItem == null) {
-        await _med.restoreStock(old.medicineId, old.quantity);
+        await _med.restoreStock(old.medicineId!, old.quantity);
       } else {
         final diff = newItem.quantity - old.quantity;
-        if (diff > 0) await _med.reduceStock(old.medicineId, diff);
-        if (diff < 0) await _med.restoreStock(old.medicineId, diff.abs());
+        if (diff > 0) await _med.reduceStock(old.medicineId!, diff);
+        if (diff < 0) await _med.restoreStock(old.medicineId!, diff.abs());
       }
     }
 
@@ -209,7 +216,7 @@ final discountStr = discountType == DiscountType.percent ? 'percent' : 'rs';
            VALUES (:p0,:p1,:p2,:p3,:p4,:p5,:p6)''',
         [
           bill.id,
-          item.medicineId,
+          item.medicineId, // NULL for custom items — column must allow NULL
           item.medName,
           item.quantity,
           item.unitPrice,
