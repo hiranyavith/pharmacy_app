@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pharmacy_app/models/stock_movement.dart';
 import '../models/medicine.dart';
 import '../services/medicine_service.dart';
 import '../services/barcode_scanner_service.dart';
@@ -19,6 +20,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
   final _searchCtrl = TextEditingController();
   List<Medicine> _meds = [];
   bool _loading = true;
+  bool _showInactive = false;
 
   StreamSubscription<String>? _barcodeSub;
 
@@ -85,12 +87,20 @@ class _MedicineScreenState extends State<MedicineScreen> {
 
   Future<void> _load([String q = '']) async {
     setState(() => _loading = true);
-    final list = q.isEmpty ? await _svc.getAll() : await _svc.search(q);
+    final list = _showInactive
+        ? (q.isEmpty ? await _svc.getInactive() : await _svc.searchInactive(q))
+        : (q.isEmpty ? await _svc.getAll() : await _svc.search(q));
     if (mounted)
       setState(() {
         _meds = list;
         _loading = false;
       });
+  }
+
+  void _toggleInactiveView(bool showInactive) {
+    if (_showInactive == showInactive) return;
+    setState(() => _showInactive = showInactive);
+    _load(_searchCtrl.text);
   }
 
   void _openForm([Medicine? med]) => showDialog(
@@ -153,6 +163,35 @@ class _MedicineScreenState extends State<MedicineScreen> {
     }
   }
 
+  Future<void> _activate(Medicine m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Activate Product'),
+        content: Text('Reactivate "${m.name}"?\n\n'
+            'It will appear in searches again and become available for new bills.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success),
+            child:
+                const Text('Activate', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _svc.activate(m.id!);
+      if (mounted) {
+        showSuccess(context, '${m.name} has been activated.');
+        _load(_searchCtrl.text);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateFmt = DateFormat('dd MMM yyyy');
@@ -168,55 +207,91 @@ class _MedicineScreenState extends State<MedicineScreen> {
       Container(
         color: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        child: Row(children: [
-          const Text('Inventory Management',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textMain)),
-          const Spacer(),
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 10,
+          children: [
+            Text(_showInactive ? 'Deactivated Products' : 'Inventory Management',
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textMain)),
 
-          // USB scanner status badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.success.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppTheme.success.withOpacity(0.3)),
+            // Right-side controls grouped so they wrap together
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 10,
+              children: [
+                // Active / Deactivated toggle
+                Container(
+                  height: 34,
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    _ViewToggleBtn(
+                      label: 'Active',
+                      icon: Icons.check_circle_outline,
+                      selected: !_showInactive,
+                      onTap: () => _toggleInactiveView(false),
+                    ),
+                    _ViewToggleBtn(
+                      label: 'Deactivated',
+                      icon: Icons.visibility_off_outlined,
+                      selected: _showInactive,
+                      onTap: () => _toggleInactiveView(true),
+                    ),
+                  ]),
+                ),
+
+                // USB scanner status badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.success.withOpacity(0.3)),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.usb, size: 13, color: AppTheme.success),
+                    const SizedBox(width: 5),
+                    Text('USB Scanner Ready',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.success,
+                            fontWeight: FontWeight.w500)),
+                  ]),
+                ),
+
+                // Manual search
+                SizedBox(
+                  width: 220,
+                  child: TextField(
+                    controller: _searchCtrl,
+                    decoration: const InputDecoration(
+                      hintText: 'Search name, category or barcode…',
+                      prefixIcon: Icon(Icons.search, size: 18),
+                      isDense: true,
+                    ),
+                    onChanged: _load,
+                  ),
+                ),
+
+                ElevatedButton.icon(
+                  onPressed: () => _openForm(),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add Products'),
+                ),
+              ],
             ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.usb, size: 13, color: AppTheme.success),
-              const SizedBox(width: 5),
-              Text('USB Scanner Ready',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: AppTheme.success,
-                      fontWeight: FontWeight.w500)),
-            ]),
-          ),
-          const SizedBox(width: 12),
-
-          // Manual search
-          SizedBox(
-            width: 260,
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: const InputDecoration(
-                hintText: 'Search name, category or barcode…',
-                prefixIcon: Icon(Icons.search, size: 18),
-                isDense: true,
-              ),
-              onChanged: _load,
-            ),
-          ),
-          const SizedBox(width: 12),
-
-          ElevatedButton.icon(
-            onPressed: () => _openForm(),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add Products'),
-          ),
-        ]),
+          ],
+        ),
       ),
       const Divider(height: 1),
 
@@ -238,10 +313,10 @@ class _MedicineScreenState extends State<MedicineScreen> {
                           DataColumn(label: Text('Name')),
                           DataColumn(label: Text('Category')),
                           DataColumn(label: Text('Barcode')),
-                          DataColumn(label: Text('Price (Rs.)')),
+                          DataColumn(label: Text('Price')),
                           DataColumn(label: Text('Stock')),
-                          DataColumn(label: Text('Warn Limit')),
-                          DataColumn(label: Text('Stock Value (Rs.)')),
+                          DataColumn(label: Text('W_Limit')),
+                          DataColumn(label: Text('Stock_v')),
                           DataColumn(label: Text('Expiry')),
                           DataColumn(label: Text('Actions')),
                         ],
@@ -316,31 +391,57 @@ class _MedicineScreenState extends State<MedicineScreen> {
                                           ? FontWeight.w600
                                           : FontWeight.normal,
                                     ))),
-                            DataCell(Row(children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined,
-                                    size: 18, color: AppTheme.primary),
-                                tooltip: 'Edit',
-                                onPressed: () => _openForm(m),
-                              ),
-                              // ── Print label ──────────────────────────
-                              IconButton(
-                                icon: const Icon(Icons.label_outline,
-                                    size: 18, color: AppTheme.secondary),
-                                tooltip: 'Print Label',
-                                onPressed: () => showDialog(
-                                  context: context,
-                                  builder: (_) =>
-                                      LabelDesignScreen(medicine: m),
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline,
-                                    size: 18, color: AppTheme.danger),
-                                tooltip: 'Deactivate',
-                                onPressed: () => _deactivate(m),
-                              ),
-                            ])),
+                            DataCell(Row(
+                                children: _showInactive
+                                    ? [
+                                        IconButton(
+                                          icon: const Icon(Icons.restore,
+                                              size: 18,
+                                              color: AppTheme.success),
+                                          tooltip: 'Activate',
+                                          onPressed: () => _activate(m),
+                                        ),
+                                      ]
+                                    : [
+                                        IconButton(
+                                          icon: const Icon(Icons.edit_outlined,
+                                              size: 18,
+                                              color: AppTheme.primary),
+                                          tooltip: 'Edit',
+                                          onPressed: () => _openForm(m),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.label_outline,
+                                              size: 18,
+                                              color: AppTheme.secondary),
+                                          tooltip: 'Print Label',
+                                          onPressed: () => showDialog(
+                                            context: context,
+                                            builder: (_) =>
+                                                LabelDesignScreen(medicine: m),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                              Icons.add_box_outlined,
+                                              size: 18,
+                                              color: AppTheme.success),
+                                          tooltip: 'Restock',
+                                          onPressed: () => showDialog(
+                                            context: context,
+                                            builder: (_) => _RestockDialog(
+                                              medicine: m,
+                                              onSaved: _load,
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline,
+                                              size: 18, color: AppTheme.danger),
+                                          tooltip: 'Deactivate',
+                                          onPressed: () => _deactivate(m),
+                                        ),
+                                      ])),
                           ]);
                         }).toList(),
                       ),
@@ -465,6 +566,41 @@ class _MedicineForm extends StatefulWidget {
   const _MedicineForm({this.medicine, required this.onSaved});
   @override
   State<_MedicineForm> createState() => _MedicineFormState();
+}
+
+class _ViewToggleBtn extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ViewToggleBtn(
+      {required this.label,
+      required this.icon,
+      required this.selected,
+      required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon,
+                size: 14, color: selected ? Colors.white : AppTheme.textSub),
+            const SizedBox(width: 5),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? Colors.white : AppTheme.textSub)),
+          ]),
+        ),
+      );
 }
 
 class _MedicineFormState extends State<_MedicineForm> {
@@ -867,6 +1003,232 @@ class _MedicineFormState extends State<_MedicineForm> {
           label: Text(isEdit ? 'Update' : 'Add Product'),
         ),
       ],
+    );
+  }
+}
+
+class _RestockDialog extends StatefulWidget {
+  final Medicine medicine;
+  final VoidCallback onSaved;
+  const _RestockDialog({required this.medicine, required this.onSaved});
+  @override
+  State<_RestockDialog> createState() => _RestockDialogState();
+}
+
+class _RestockDialogState extends State<_RestockDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _svc = MedicineService();
+  final _qty = TextEditingController();
+  final _cost = TextEditingController();
+  final _supplier = TextEditingController();
+  final _notes = TextEditingController();
+  bool _saving = false;
+  bool _showHistory = false;
+  List<StockMovement> _history = [];
+  bool _loadingHistory = false;
+
+  @override
+  void dispose() {
+    _qty.dispose();
+    _cost.dispose();
+    _supplier.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadHistory() async {
+    setState(() => _loadingHistory = true);
+    final h = await _svc.getStockHistory(widget.medicine.id!);
+    if (mounted)
+      setState(() {
+        _history = h;
+        _loadingHistory = false;
+      });
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+    try {
+      await _svc.restock(
+        widget.medicine.id!,
+        int.parse(_qty.text),
+        costPrice: double.tryParse(_cost.text),
+        supplier: _supplier.text.trim().isEmpty ? null : _supplier.text.trim(),
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        showSuccess(
+            context, '${_qty.text} units added to ${widget.medicine.name}.');
+        widget.onSaved();
+      }
+    } catch (e) {
+      if (mounted) showError(context, 'Error: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('dd MMM yyyy, hh:mm a');
+    final fmt = NumberFormat('#,##0.00');
+
+    return AlertDialog(
+      title: Row(children: [
+        const Icon(Icons.add_box_outlined, color: AppTheme.success, size: 22),
+        const SizedBox(width: 8),
+        Expanded(
+            child: Text('Restock — ${widget.medicine.name}',
+                overflow: TextOverflow.ellipsis)),
+        IconButton(
+          icon: Icon(_showHistory ? Icons.close : Icons.history, size: 20),
+          tooltip: _showHistory ? 'Close history' : 'View stock history',
+          onPressed: () {
+            setState(() => _showHistory = !_showHistory);
+            if (_showHistory && _history.isEmpty) _loadHistory();
+          },
+        ),
+      ]),
+      content: SizedBox(
+        width: 420,
+        child: _showHistory ? _buildHistory(dateFmt, fmt) : _buildForm(),
+      ),
+      actions: _showHistory
+          ? [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'))
+            ]
+          : [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel')),
+              ElevatedButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.add, size: 16),
+                label: const Text('Add Stock'),
+                style:
+                    ElevatedButton.styleFrom(backgroundColor: AppTheme.success),
+              ),
+            ],
+    );
+  }
+
+  Widget _buildForm() {
+    return Form(
+      key: _formKey,
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(children: [
+            const Icon(Icons.inventory_2_outlined,
+                size: 16, color: AppTheme.primary),
+            const SizedBox(width: 8),
+            Text('Current stock: ${widget.medicine.stock} units',
+                style:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+          ]),
+        ),
+        TextFormField(
+          controller: _qty,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Quantity Received *',
+            prefixIcon: Icon(Icons.add_circle_outline, size: 18),
+          ),
+          validator: (v) {
+            final n = int.tryParse(v ?? '');
+            if (n == null || n <= 0) return 'Enter a valid quantity';
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _cost,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Cost Price per Unit (optional)',
+            prefixText: 'Rs. ',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _supplier,
+          decoration: const InputDecoration(
+            labelText: 'Supplier (optional)',
+            prefixIcon: Icon(Icons.local_shipping_outlined, size: 18),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _notes,
+          decoration: const InputDecoration(
+            labelText: 'Notes (optional)',
+            prefixIcon: Icon(Icons.note_outlined, size: 18),
+          ),
+          maxLines: 2,
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildHistory(DateFormat dateFmt, NumberFormat fmt) {
+    if (_loadingHistory) {
+      return const SizedBox(
+          height: 200, child: Center(child: CircularProgressIndicator()));
+    }
+    if (_history.isEmpty) {
+      return const SizedBox(
+        height: 200,
+        child: Center(
+          child: Text('No stock arrivals recorded yet.',
+              style: TextStyle(color: AppTheme.textSub)),
+        ),
+      );
+    }
+    return SizedBox(
+      height: 320,
+      child: ListView.separated(
+        itemCount: _history.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (_, i) {
+          final h = _history[i];
+          return ListTile(
+            dense: true,
+            leading: const Icon(Icons.add_box_outlined,
+                color: AppTheme.success, size: 20),
+            title: Text('+${h.quantity} units',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              [
+                dateFmt.format(h.createdAt),
+                if (h.supplier != null) h.supplier!,
+                if (h.notes != null) h.notes!,
+              ].join('  ·  '),
+              style: const TextStyle(fontSize: 11),
+            ),
+            trailing: h.costPrice != null
+                ? Text('Rs. ${fmt.format(h.totalCost)}',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w500))
+                : null,
+          );
+        },
+      ),
     );
   }
 }

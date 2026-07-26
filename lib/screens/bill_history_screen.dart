@@ -35,11 +35,12 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
     });
     final list =
         q.isEmpty ? await _svc.getAllBills() : await _svc.searchBills(q);
-    if (mounted)
+    if (mounted) {
       setState(() {
         _bills = list;
         _loading = false;
       });
+    }
   }
 
   Future<void> _selectBill(Bill bill) async {
@@ -58,24 +59,38 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
               medName: e.medName,
               quantity: e.quantity,
               unitPrice: e.unitPrice,
-              // carry any other fields your BillItem has
+              mrp: e.mrp,
             ))
         .toList();
 
-    // One TextEditingController per row, keyed by index
     final controllers = {
       for (var i = 0; i < editItems.length; i++)
         i: TextEditingController(text: '${editItems[i].quantity}')
     };
 
-    double discount = bill.discount;
-    final discountCtrl =
-        TextEditingController(text: discount == 0 ? '' : '$discount');
+    double discountValue = bill.discount;
+    DiscountType discountType = bill.discountType;
+    final discountCtrl = TextEditingController(
+        text: discountValue == 0
+            ? ''
+            : (discountValue == discountValue.toInt()
+                ? '${discountValue.toInt()}'
+                : '$discountValue'));
 
-    // Recalculate totals from editItems + discount
-    double subtotal() =>
+    // Recalculate totals dynamically
+    double calculateSubtotal() =>
         editItems.fold(0.0, (s, it) => s + it.unitPrice * it.quantity);
-    double total() => subtotal() - discount;
+
+    double calculateDiscountAmount() {
+      final sub = calculateSubtotal();
+      if (discountType == DiscountType.percent) {
+        return (sub * discountValue / 100).clamp(0, sub);
+      }
+      return discountValue.clamp(0, sub);
+    }
+
+    double calculateTotal() =>
+        (calculateSubtotal() - calculateDiscountAmount()).clamp(0, double.infinity);
 
     final fmt = NumberFormat('#,##0.00');
 
@@ -84,7 +99,6 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
       barrierDismissible: false,
       builder: (ctx) {
         return StatefulBuilder(builder: (ctx, setDlg) {
-          // ── step qty ──
           void stepQty(int i, int delta) {
             final next = editItems[i].quantity + delta;
             if (next < 1) return;
@@ -94,7 +108,6 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
             });
           }
 
-          // ── manual qty input ──
           void onQtyInput(int i, String v) {
             final parsed = int.tryParse(v);
             if (parsed != null && parsed >= 1) {
@@ -102,12 +115,10 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
             }
           }
 
-          // ── remove row ──
           void removeItem(int i) {
             setDlg(() {
               editItems.removeAt(i);
               controllers.remove(i);
-              // Re-key remaining controllers
               final entries = controllers.entries.toList();
               controllers.clear();
               for (var j = 0; j < entries.length; j++) {
@@ -122,7 +133,8 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
             insetPadding:
                 const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 820, maxHeight: 640),
+              constraints:
+                  const BoxConstraints(maxWidth: 820, maxHeight: 640),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -222,7 +234,6 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                                   crossAxisAlignment:
                                       CrossAxisAlignment.center,
                                   children: [
-                                    // Medicine name
                                     Expanded(
                                       child: Text(item.medName,
                                           style: const TextStyle(
@@ -230,7 +241,7 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                                               fontSize: 13)),
                                     ),
 
-                                    // ── Qty Stepper ──
+                                    // Stepper
                                     Container(
                                       width: 160,
                                       height: 36,
@@ -285,7 +296,7 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                                         ),
                                         StepperBtn(
                                           icon: Icons.add,
-                                          enabled: true, // add stock check if available
+                                          enabled: true,
                                           isLeft: false,
                                           onTap: () => stepQty(i, 1),
                                         ),
@@ -304,7 +315,7 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                                       ),
                                     ),
 
-                                    // Line total (live)
+                                    // Line total
                                     SizedBox(
                                       width: 100,
                                       child: Text(
@@ -317,7 +328,7 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                                       ),
                                     ),
 
-                                    // Remove button
+                                    // Remove
                                     SizedBox(
                                       width: 40,
                                       child: IconButton(
@@ -346,24 +357,82 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        // Discount field
-                        SizedBox(
-                          width: 180,
-                          child: TextField(
-                            controller: discountCtrl,
-                            keyboardType:
-                                const TextInputType.numberWithOptions(
-                                    decimal: true),
-                            decoration: const InputDecoration(
-                              labelText: 'Discount (Rs.)',
-                              prefixText: 'Rs. ',
-                              isDense: true,
+                        // Discount inputs (Toggle + Input Field)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Discount',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textSub,
+                                    fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                // Toggle Type Button
+                                Container(
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                        color: Colors.grey[300]!),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      _DiscountToggleOption(
+                                        label: 'Rs.',
+                                        selected: discountType ==
+                                            DiscountType.rs,
+                                        onTap: () {
+                                          setDlg(() => discountType =
+                                              DiscountType.rs);
+                                        },
+                                      ),
+                                      _DiscountToggleOption(
+                                        label: '%',
+                                        selected: discountType ==
+                                            DiscountType.percent,
+                                        onTap: () {
+                                          setDlg(() => discountType =
+                                              DiscountType.percent);
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 110,
+                                  child: TextField(
+                                    controller: discountCtrl,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.allow(
+                                          RegExp(r'^\d+\.?\d{0,2}')),
+                                    ],
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      suffixText:
+                                          discountType == DiscountType.percent
+                                              ? '%'
+                                              : 'Rs.',
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 10),
+                                    ),
+                                    onChanged: (v) {
+                                      setDlg(() => discountValue =
+                                          double.tryParse(v) ?? 0.0);
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
-                            onChanged: (v) {
-                              setDlg(() =>
-                                  discount = double.tryParse(v) ?? 0.0);
-                            },
-                          ),
+                          ],
                         ),
 
                         const Spacer(),
@@ -373,19 +442,17 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             _SummaryLine(
-                                'Subtotal',
-                                'Rs. ${fmt.format(subtotal())}'),
-                            if (discount > 0)
+                                'Subtotal', 'Rs. ${fmt.format(calculateSubtotal())}'),
+                            if (calculateDiscountAmount() > 0)
                               _SummaryLine(
-                                  'Discount',
-                                  '- Rs. ${fmt.format(discount)}',
+                                  discountType == DiscountType.percent
+                                      ? 'Discount ($discountValue%)'
+                                      : 'Discount',
+                                  '- Rs. ${fmt.format(calculateDiscountAmount())}',
                                   color: AppTheme.danger),
                             const SizedBox(height: 4),
-                            _SummaryLine(
-                                'TOTAL',
-                                'Rs. ${fmt.format(total())}',
-                                bold: true,
-                                color: AppTheme.primary),
+                            _SummaryLine('TOTAL', 'Rs. ${fmt.format(calculateTotal())}',
+                                bold: true, color: AppTheme.primary),
                           ],
                         ),
 
@@ -406,18 +473,17 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                               onPressed: editItems.isEmpty
                                   ? null
                                   : () async {
-                                      // Build updated bill
                                       final updated = bill.copyWith(
                                         items: editItems,
-                                        discount: discount,
-                                        subtotal: subtotal(),
-                                        total: total(),
+                                        discount: discountValue,
+                                        discountType: discountType,
+                                        subtotal: calculateSubtotal(),
+                                        total: calculateTotal(),
                                       );
                                       await _svc.updateBill(updated);
                                       if (ctx.mounted) {
                                         Navigator.pop(ctx);
                                       }
-                                      // Refresh list + re-select
                                       await _load(_searchCtrl.text);
                                       if (mounted) {
                                         await _selectBill(updated);
@@ -442,7 +508,6 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
       },
     );
 
-    // Dispose controllers
     for (final c in controllers.values) {
       c.dispose();
     }
@@ -453,11 +518,11 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
-    final dateFmt = DateFormat('dd MMM yyyy  hh:mm a');
+    final dateFmt = DateFormat('dd MMM yyyy   hh:mm a');
     final dateOnly = DateFormat('dd MMM yyyy');
 
     return Row(children: [
-      // ── Left: Bill list ────────────────────────────────────────────────────
+      // ── Left: Bill list ──
       Expanded(
         flex: 2,
         child: Column(children: [
@@ -568,7 +633,7 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
 
       const VerticalDivider(width: 1),
 
-      // ── Right: Bill details ────────────────────────────────────────────────
+      // ── Right: Bill details ──
       Expanded(
         flex: 3,
         child: _selected == null
@@ -637,7 +702,7 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                                 topRight: Radius.circular(12),
                               ),
                             ),
-                            child: Row(children: const [
+                            child: const Row(children: [
                               Expanded(
                                   child: Text('Product',
                                       style: TextStyle(
@@ -703,11 +768,11 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
 
                       const SizedBox(height: 12),
 
-                      // Totals
+                      // Totals Summary
                       Align(
                         alignment: Alignment.centerRight,
                         child: Container(
-                          width: 260,
+                          width: 280,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -726,10 +791,12 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                                 'Rs. ${fmt.format(_selected!.given)}'),
                             TotalLine('Change Price',
                                 'Rs. ${fmt.format(_selected!.change)}'),
-                            if (_selected!.discount > 0)
+                            if (_selected!.discountAmount > 0)
                               TotalLine(
-                                  'Discount',
-                                  '- Rs. ${fmt.format(_selected!.discount)}',
+                                  _selected!.discountType == DiscountType.percent
+                                      ? 'Discount (${_selected!.discount.toStringAsFixed(_selected!.discount.truncateToDouble() == _selected!.discount ? 0 : 1)}%)'
+                                      : 'Discount',
+                                  '- Rs. ${fmt.format(_selected!.discountAmount)}',
                                   color: AppTheme.danger),
                             const Divider(),
                             TotalLine('TOTAL',
@@ -740,10 +807,11 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                       ),
                       const SizedBox(height: 12),
 
+                      // Payment & Customer Info
                       Align(
                         alignment: Alignment.centerRight,
                         child: Container(
-                          width: 260,
+                          width: 280,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -763,11 +831,7 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
                                   .split('.')
                                   .last
                                   .toUpperCase(),
-                              color: _selected!.paymentType
-                                          .toString()
-                                          .split('.')
-                                          .last ==
-                                      'cash'
+                              color: _selected!.paymentType == PaymentType.cash
                                   ? AppTheme.success
                                   : AppTheme.textMain,
                               bold: true,
@@ -784,6 +848,41 @@ class _BillHistoryScreenState extends State<BillHistoryScreen> {
               ),
       ),
     ]);
+  }
+}
+
+// ── Toggle segment button component ──────────────────────────────────────────
+class _DiscountToggleOption extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _DiscountToggleOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: selected ? Colors.white : AppTheme.textSub,
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -807,7 +906,8 @@ class _SummaryLine extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text('$label:  ', style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
+        Text('$label:  ',
+            style: const TextStyle(fontSize: 12, color: AppTheme.textSub)),
         Text(value, style: style),
       ]),
     );

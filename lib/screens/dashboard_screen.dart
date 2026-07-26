@@ -34,6 +34,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _expiringSoon = 0;
   int _totalBills = 0;
   int _totalClaims = 0;
+  double _todaySales = 0.00;
+  double _monthlyIncome = 0.00;
   double _inventoryValue = 0;
   List<Medicine> _expiringList = [];
   List<Medicine> _lowStockList = [];
@@ -76,6 +78,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final low = await ms.getLowStock();
     final exp = await ms.getExpiringSoon();
     final bills = await bs.getAllBills();
+    final todaySales = await bs.getTodaySales();
+    final monthlyIncome = await bs.getMonthlySales();
     // final claims = await cs.getAllClaims();
 
     if (!mounted) return;
@@ -84,6 +88,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _lowStock = low.length;
       _expiringSoon = exp.length;
       _totalBills = bills.length;
+      _todaySales = todaySales;
+      _monthlyIncome = monthlyIncome;
       // _totalClaims   = claims.length;
       _inventoryValue = all.fold(0.0, (s, m) => s + m.totalValue);
       _lowStockList = low.take(5).toList();
@@ -141,13 +147,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(width: 10),
                     const Expanded(
-                      child: Text('Sampath Book Shop',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),textAlign: TextAlign.start,),
-
+                      child: Text(
+                        'Sampath Book Shop',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.start,
+                      ),
                     ),
                   ]),
                   const SizedBox(height: 4),
@@ -334,6 +342,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   expiringSoon: _expiringSoon,
                   totalBills: _totalBills,
                   totalClaims: _totalClaims,
+                  todaySales: _todaySales,
+                  monthlyIncome: _monthlyIncome,
                   inventoryValue: _inventoryValue,
                   expiringList: _expiringList,
                   lowStockList: _lowStockList,
@@ -370,6 +380,8 @@ class _NavItem {
 class _DashboardHome extends StatelessWidget {
   final String greeting;
   final int totalMeds, lowStock, expiringSoon, totalBills, totalClaims;
+  final double todaySales;
+  final double monthlyIncome;
   final double inventoryValue;
   final List<Medicine> expiringList, lowStockList;
   final List<Bill> recentBills;
@@ -384,6 +396,8 @@ class _DashboardHome extends StatelessWidget {
     required this.expiringSoon,
     required this.totalBills,
     required this.totalClaims,
+    required this.todaySales,
+    required this.monthlyIncome,
     required this.inventoryValue,
     required this.expiringList,
     required this.lowStockList,
@@ -495,6 +509,19 @@ class _DashboardHome extends StatelessWidget {
                             )),
                             const SizedBox(width: 14),
                             Expanded(
+                              child: _KpiCard(
+                                label: 'Today Sales',
+                                value:
+                                    'Rs. ${fmt.format(todaySales)}', // Formats as e.g. "Rs. 1,500.00"
+                                icon: Icons.price_change,
+                                color: AppTheme.success,
+                                sub: 'Within 24 Hours',
+                                alert: false,
+                                onTap: () => onNavigate(3),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
                                 child: _KpiCard(
                               label: 'Expiring Soon',
                               value: '$expiringSoon',
@@ -506,7 +533,6 @@ class _DashboardHome extends StatelessWidget {
                               alert: expiringSoon > 0,
                               onTap: () => onNavigate(4),
                             )),
-                            const SizedBox(width: 14),
                             // Expanded(child: _KpiCard(
                             //   label: 'Open Claims',
                             //   value: '$totalClaims',
@@ -565,6 +591,9 @@ class _DashboardHome extends StatelessWidget {
                                         letterSpacing: -0.5)),
                               ])),
                           // Mini stats inside banner
+                          _BannerStat('Monthly Income',
+                              'Rs. ${fmt.format(monthlyIncome)}'), // ← Added here
+                          const SizedBox(width: 24),
                           _BannerStat('Products', '$totalMeds'),
                           const SizedBox(width: 24),
                           _BannerStat('Bills Issued', '$totalBills'),

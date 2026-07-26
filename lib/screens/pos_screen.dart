@@ -132,11 +132,17 @@ class _POSScreenState extends State<POSScreen> {
     _priceControllers.clear();
     setState(() => _cart.clear());
   }
-
+DiscountType _discountType = DiscountType.rs;
   // ── Totals ─────────────────────────────────────────────────────────────────
   double get _subtotal => _cart.fold(0, (s, i) => s + i.lineTotal);
-  double get _discount => double.tryParse(_discountCtrl.text) ?? 0;
-  double get _total    => (_subtotal - _discount).clamp(0, double.infinity);
+  double get _discountInput => double.tryParse(_discountCtrl.text) ?? 0;
+double get _discountAmount {
+  if (_discountType == DiscountType.percent) {
+    return (_subtotal * _discountInput / 100).clamp(0, _subtotal);
+  }
+  return _discountInput.clamp(0, _subtotal);
+}
+double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
   double get _cash     => double.tryParse(_cashCtrl.text) ?? 0;
   double get _change   => (_cash - _total).clamp(0, double.infinity);
   bool   get _isCard   => _paymentType == PaymentType.card;
@@ -148,7 +154,8 @@ class _POSScreenState extends State<POSScreen> {
     try {
       final bill = await _billSvc.createBill(
         _cart,
-        discount:     _discount,
+        discount:     _discountInput,
+        discountType: _discountType,
         given:        _isCard ? _total : _cash,
         paymentType:  _paymentType,
         customerName: _customerCtrl.text.trim(),
@@ -727,26 +734,69 @@ class _POSScreenState extends State<POSScreen> {
               const SizedBox(height: 10),
 
               // Discount
-              Row(children: [
-                const Text('Discount (Rs.):',
-                    style: TextStyle(color: AppTheme.textSub, fontSize: 13)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _discountCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d+\.?\d{0,2}')),
-                    ],
-                    decoration: const InputDecoration(
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8)),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-              ]),
+             Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text('Discount:', style: TextStyle(color: AppTheme.textSub, fontSize: 13)),
+        // Toggle Segmented Control (Rs / %)
+        Container(
+          height: 28,
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.grey[300]!),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _DiscountToggleBtn(
+                label: 'Rs.',
+                selected: _discountType == DiscountType.rs,
+                onTap: () => setState(() => _discountType = DiscountType.rs),
+              ),
+              _DiscountToggleBtn(
+                label: '%',
+                selected: _discountType == DiscountType.percent,
+                onTap: () => setState(() => _discountType = DiscountType.percent),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+    const SizedBox(height: 8),
+    Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _discountCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+            ],
+            decoration: InputDecoration(
+              isDense: true,
+              prefixText: _discountType == DiscountType.rs ? 'Rs. ' : null,
+              suffixText: _discountType == DiscountType.percent ? '%' : null,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ),
+      ],
+    ),
+    if (_discountType == DiscountType.percent && _discountInput > 0) ...[
+      const SizedBox(height: 4),
+      Text(
+        'Deduction: -Rs. ${fmt.format(_discountAmount)}',
+        style: const TextStyle(fontSize: 11, color: AppTheme.warning, fontWeight: FontWeight.w600),
+      ),
+    ],
+  ],
+),
               const SizedBox(height: 12),
               const Divider(),
 
@@ -1227,6 +1277,40 @@ class _BillPreviewDialog extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+class _DiscountToggleBtn extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _DiscountToggleBtn({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: selected ? Colors.white : AppTheme.textSub,
+          ),
+        ),
+      ),
     );
   }
 }

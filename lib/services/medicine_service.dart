@@ -3,6 +3,7 @@ import 'dart:math';
 
 import '../db/db_helper.dart';
 import '../models/medicine.dart';
+import '../models/stock_movement.dart';
 
 class MedicineService {
   final _db = DBHelper.instance;
@@ -154,4 +155,61 @@ class MedicineService {
     } while (exists);
     return barcode;
   }
+
+    Future<void> restock(
+    int medicineId,
+    int quantity, {
+    double? costPrice,
+    String? supplier,
+    String? notes,
+  }) async {
+    if (quantity <= 0) {
+      throw ArgumentError('Restock quantity must be greater than zero.');
+    }
+
+    await _db.execute(
+      '''INSERT INTO stock_movements
+           (medicine_id, quantity, cost_price, supplier, notes)
+         VALUES (:p0, :p1, :p2, :p3, :p4)''',
+      [medicineId, quantity, costPrice, supplier, notes],
+    );
+
+    await _db.execute(
+      'UPDATE medicines SET stock = stock + :p0 WHERE id = :p1',
+      [quantity, medicineId],
+    );
+  }
+
+  // ── Stock arrival history for one product, most recent first ─────────────
+  Future<List<StockMovement>> getStockHistory(int medicineId) async {
+    final rows = await _db.query(
+      '''SELECT * FROM stock_movements
+         WHERE medicine_id = :p0
+         ORDER BY created_at DESC''',
+      [medicineId],
+    );
+    return rows.map(StockMovement.fromMap).toList();
+  }
+
+   Future<List<Medicine>> getInactive() async {
+    final rows = await _db.query(
+      'SELECT * FROM medicines WHERE is_active = 0 ORDER BY name ASC',
+    );
+    return rows.map(Medicine.fromMap).toList();
+  }
+
+  Future<List<Medicine>> searchInactive(String q) async {
+    final rows = await _db.query(
+      '''SELECT * FROM medicines
+         WHERE is_active = 0
+           AND (name     LIKE :p0
+            OR category LIKE :p1
+            OR barcode  LIKE :p2)
+         ORDER BY name''',
+      ['%$q%', '%$q%', '%$q%'],
+    );
+    return rows.map(Medicine.fromMap).toList();
+  }
+
+  
 }

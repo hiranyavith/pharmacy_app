@@ -12,7 +12,7 @@ class DBHelper {
   static const int    _port     = 3306;
   static const String _user     = 'root';
   static const String _password = 'Inter@357#%&';
-  static const String _db       = 'pharmacy_db_grn';
+  static const String _db       = 'sampth_book_shop';
 
 
   Future<MySQLConnection> get connection async {
