@@ -21,6 +21,8 @@ class _MedicineScreenState extends State<MedicineScreen> {
   List<Medicine> _meds = [];
   bool _loading = true;
   bool _showInactive = false;
+  final _vScrollCtrl = ScrollController(); // outer vertical scroll
+  final _hScrollCtrl = ScrollController();
 
   StreamSubscription<String>? _barcodeSub;
 
@@ -36,6 +38,8 @@ class _MedicineScreenState extends State<MedicineScreen> {
   @override
   void dispose() {
     _barcodeSub?.cancel();
+    _vScrollCtrl.dispose();
+    _hScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -213,7 +217,8 @@ class _MedicineScreenState extends State<MedicineScreen> {
           spacing: 12,
           runSpacing: 10,
           children: [
-            Text(_showInactive ? 'Deactivated Products' : 'Inventory Management',
+            Text(
+                _showInactive ? 'Deactivated Products' : 'Inventory Management',
                 style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -252,11 +257,13 @@ class _MedicineScreenState extends State<MedicineScreen> {
 
                 // USB scanner status badge
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppTheme.success.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.success.withOpacity(0.3)),
+                    border:
+                        Border.all(color: AppTheme.success.withOpacity(0.3)),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.usb, size: 13, color: AppTheme.success),
@@ -303,150 +310,204 @@ class _MedicineScreenState extends State<MedicineScreen> {
                 ? const Center(
                     child: Text('No Products found.',
                         style: TextStyle(color: AppTheme.textSub)))
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: Card(
-                      child: DataTable(
-                        headingRowColor: WidgetStateProperty.all(
-                            AppTheme.primary.withOpacity(0.06)),
-                        columns: const [
-                          DataColumn(label: Text('Name')),
-                          DataColumn(label: Text('Category')),
-                          DataColumn(label: Text('Barcode')),
-                          DataColumn(label: Text('Price')),
-                          DataColumn(label: Text('Stock')),
-                          DataColumn(label: Text('W_Limit')),
-                          DataColumn(label: Text('Stock_v')),
-                          DataColumn(label: Text('Expiry')),
-                          DataColumn(label: Text('Actions')),
-                        ],
-                        rows: _meds.map((m) {
-                          final stockColor = m.isLowStock
-                              ? AppTheme.danger
-                              : AppTheme.textMain;
-                          return DataRow(cells: [
-                            DataCell(Text(m.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w500))),
-                            DataCell(Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primary.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(m.category,
-                                  style: const TextStyle(
-                                      fontSize: 12, color: AppTheme.primary)),
-                            )),
-                            DataCell(m.barcode == null || m.barcode!.isEmpty
-                                ? const Text('—',
-                                    style: TextStyle(color: AppTheme.textSub))
-                                : Row(children: [
-                                    const Icon(Icons.qr_code,
-                                        size: 14, color: AppTheme.textSub),
-                                    const SizedBox(width: 4),
-                                    Text(m.barcode!,
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            fontFamily: 'monospace')),
-                                  ])),
-                            DataCell(Text('Rs. ${m.price.toStringAsFixed(2)}')),
-                            DataCell(Row(children: [
-                              Text('${m.stock}',
-                                  style: TextStyle(
-                                      color: stockColor,
-                                      fontWeight: FontWeight.w600)),
-                              if (m.isLowStock) ...[
-                                const SizedBox(width: 4),
-                                const Icon(Icons.warning_amber,
-                                    size: 14, color: AppTheme.warning),
-                              ],
-                            ])),
-                            DataCell(Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: AppTheme.warning.withOpacity(0.10),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text('≤ ${m.stockWarningLimit}',
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      color: AppTheme.warning,
-                                      fontWeight: FontWeight.w600)),
-                            )),
-                            DataCell(Text('Rs. ${fmt.format(m.totalValue)}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    color: AppTheme.textMain))),
-                            DataCell(m.expiryDate == null
-                                ? const Text('—')
-                                : Text(dateFmt.format(m.expiryDate!),
-                                    style: TextStyle(
-                                      color: m.isExpiringSoon
-                                          ? AppTheme.danger
-                                          : AppTheme.textMain,
-                                      fontWeight: m.isExpiringSoon
-                                          ? FontWeight.w600
-                                          : FontWeight.normal,
-                                    ))),
-                            DataCell(Row(
-                                children: _showInactive
-                                    ? [
-                                        IconButton(
-                                          icon: const Icon(Icons.restore,
-                                              size: 18,
-                                              color: AppTheme.success),
-                                          tooltip: 'Activate',
-                                          onPressed: () => _activate(m),
-                                        ),
-                                      ]
-                                    : [
-                                        IconButton(
-                                          icon: const Icon(Icons.edit_outlined,
-                                              size: 18,
-                                              color: AppTheme.primary),
-                                          tooltip: 'Edit',
-                                          onPressed: () => _openForm(m),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.label_outline,
-                                              size: 18,
-                                              color: AppTheme.secondary),
-                                          tooltip: 'Print Label',
-                                          onPressed: () => showDialog(
-                                            context: context,
-                                            builder: (_) =>
-                                                LabelDesignScreen(medicine: m),
-                                          ),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(
-                                              Icons.add_box_outlined,
-                                              size: 18,
-                                              color: AppTheme.success),
-                                          tooltip: 'Restock',
-                                          onPressed: () => showDialog(
-                                            context: context,
-                                            builder: (_) => _RestockDialog(
-                                              medicine: m,
-                                              onSaved: _load,
+                : Scrollbar(
+                    controller: _vScrollCtrl,
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                        controller: _vScrollCtrl,
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                        child: Card(
+                          child: Scrollbar(
+                            controller: _hScrollCtrl,
+                            thumbVisibility: true,
+                            notificationPredicate: (notif) => notif.depth == 0,
+                            child: SingleChildScrollView(
+                                controller: _hScrollCtrl,
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minWidth:
+                                          MediaQuery.of(context).size.width -
+                                              32,
+                                    ),
+                                    child: DataTable(
+                                      headingRowColor: WidgetStateProperty.all(
+                                          AppTheme.primary.withOpacity(0.06)),
+                                      columns: const [
+                                        DataColumn(label: Text('Name')),
+                                        DataColumn(label: Text('Category')),
+                                        DataColumn(label: Text('Barcode')),
+                                        DataColumn(label: Text('Price')),
+                                        DataColumn(label: Text('Stock')),
+                                        DataColumn(label: Text('W_Limit')),
+                                        DataColumn(label: Text('Stock_v')),
+                                        DataColumn(label: Text('Expiry')),
+                                        DataColumn(label: Text('Actions')),
+                                      ],
+                                      rows: _meds.map((m) {
+                                        final stockColor = m.isLowStock
+                                            ? AppTheme.danger
+                                            : AppTheme.textMain;
+                                        return DataRow(cells: [
+                                          DataCell(Text(m.name,
+                                              style: const TextStyle(
+                                                  fontWeight:
+                                                      FontWeight.w500))),
+                                          DataCell(Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.primary
+                                                  .withOpacity(0.08),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                             ),
-                                          ),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete_outline,
-                                              size: 18, color: AppTheme.danger),
-                                          tooltip: 'Deactivate',
-                                          onPressed: () => _deactivate(m),
-                                        ),
-                                      ])),
-                          ]);
-                        }).toList(),
-                      ),
-                    ),
-                  ),
+                                            child: Text(m.category,
+                                                style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: AppTheme.primary)),
+                                          )),
+                                          DataCell(m.barcode == null ||
+                                                  m.barcode!.isEmpty
+                                              ? const Text('—',
+                                                  style: TextStyle(
+                                                      color: AppTheme.textSub))
+                                              : Row(children: [
+                                                  const Icon(Icons.qr_code,
+                                                      size: 14,
+                                                      color: AppTheme.textSub),
+                                                  const SizedBox(width: 4),
+                                                  Text(m.barcode!,
+                                                      style: const TextStyle(
+                                                          fontSize: 12,
+                                                          fontFamily:
+                                                              'monospace')),
+                                                ])),
+                                          DataCell(Text(
+                                              'Rs. ${m.price.toStringAsFixed(2)}')),
+                                          DataCell(Row(children: [
+                                            Text('${m.stock}',
+                                                style: TextStyle(
+                                                    color: stockColor,
+                                                    fontWeight:
+                                                        FontWeight.w600)),
+                                            if (m.isLowStock) ...[
+                                              const SizedBox(width: 4),
+                                              const Icon(Icons.warning_amber,
+                                                  size: 14,
+                                                  color: AppTheme.warning),
+                                            ],
+                                          ])),
+                                          DataCell(Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.warning
+                                                  .withOpacity(0.10),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                                '≤ ${m.stockWarningLimit}',
+                                                style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: AppTheme.warning,
+                                                    fontWeight:
+                                                        FontWeight.w600)),
+                                          )),
+                                          DataCell(Text(
+                                              'Rs. ${fmt.format(m.totalValue)}',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w500,
+                                                  color: AppTheme.textMain))),
+                                          DataCell(m.expiryDate == null
+                                              ? const Text('—')
+                                              : Text(
+                                                  dateFmt.format(m.expiryDate!),
+                                                  style: TextStyle(
+                                                    color: m.isExpiringSoon
+                                                        ? AppTheme.danger
+                                                        : AppTheme.textMain,
+                                                    fontWeight: m.isExpiringSoon
+                                                        ? FontWeight.w600
+                                                        : FontWeight.normal,
+                                                  ))),
+                                          DataCell(Row(
+                                              children: _showInactive
+                                                  ? [
+                                                      IconButton(
+                                                        icon: const Icon(
+                                                            Icons.restore,
+                                                            size: 18,
+                                                            color: AppTheme
+                                                                .success),
+                                                        tooltip: 'Activate',
+                                                        onPressed: () =>
+                                                            _activate(m),
+                                                      ),
+                                                    ]
+                                                  : [
+                                                      IconButton(
+                                                        icon: const Icon(
+                                                            Icons.edit_outlined,
+                                                            size: 18,
+                                                            color: AppTheme
+                                                                .primary),
+                                                        tooltip: 'Edit',
+                                                        onPressed: () =>
+                                                            _openForm(m),
+                                                      ),
+                                                      IconButton(
+                                                        icon: const Icon(
+                                                            Icons.label_outline,
+                                                            size: 18,
+                                                            color: AppTheme
+                                                                .secondary),
+                                                        tooltip: 'Print Label',
+                                                        onPressed: () =>
+                                                            showDialog(
+                                                          context: context,
+                                                          builder: (_) =>
+                                                              LabelDesignScreen(
+                                                                  medicine: m),
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        icon: const Icon(
+                                                            Icons
+                                                                .add_box_outlined,
+                                                            size: 18,
+                                                            color: AppTheme
+                                                                .success),
+                                                        tooltip: 'Restock',
+                                                        onPressed: () =>
+                                                            showDialog(
+                                                          context: context,
+                                                          builder: (_) =>
+                                                              _RestockDialog(
+                                                            medicine: m,
+                                                            onSaved: _load,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        icon: const Icon(
+                                                            Icons
+                                                                .delete_outline,
+                                                            size: 18,
+                                                            color: AppTheme
+                                                                .danger),
+                                                        tooltip: 'Deactivate',
+                                                        onPressed: () =>
+                                                            _deactivate(m),
+                                                      ),
+                                                    ])),
+                                        ]);
+                                      }).toList(),
+                                    ))),
+                          ),
+                        ))),
       ),
 
       // ── Inventory Summary Footer ────────────────────────────────────────────

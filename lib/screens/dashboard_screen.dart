@@ -27,6 +27,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selected = 0;
+  bool _sidebarCollapsed = false;
 
   // ── Stats loaded for home page ────────
   int _totalMeds = 0;
@@ -119,8 +120,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // ════════════════════════════════════
         // SIDEBAR
         // ════════════════════════════════════
-        Container(
-          width: 230,
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: _sidebarCollapsed ? 72 : 230,
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -145,43 +147,88 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child:
                           const Icon(Icons.shop, color: Colors.white, size: 22),
                     ),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'Sampath Book Shop',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                    if (!_sidebarCollapsed) ...[
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Sampath Book Shop',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.start,
                         ),
-                        textAlign: TextAlign.start,
                       ),
-                    ),
+                    ],
                   ]),
-                  const SizedBox(height: 4),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 40),
-                    child: Text('Point Of Sale',
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
-                            fontSize: 11)),
-                  ),
+                  if (!_sidebarCollapsed) ...[
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 36),
+                      child: Text('Point Of Sale',
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(0.6),
+                              fontSize: 11)),
+                    ),
+                  ],
                 ],
               ),
             ),
 
             Container(height: 1, color: Colors.white.withOpacity(0.12)),
 
-            // Section label
+            // Collapse/expand toggle
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
-              child: Text('NAVIGATION',
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.4),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () =>
+                      setState(() => _sidebarCollapsed = !_sidebarCollapsed),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: _sidebarCollapsed
+                          ? MainAxisAlignment.center
+                          : MainAxisAlignment.start,
+                      children: [
+                        Icon(
+                          _sidebarCollapsed
+                              ? Icons.chevron_right
+                              : Icons.chevron_left,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                        if (!_sidebarCollapsed) ...[
+                          const SizedBox(width: 8),
+                          Text('Collapse',
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.7),
+                                  fontSize: 12)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
+
+            Container(height: 1, color: Colors.white.withOpacity(0.12)),
+
+            // Section label
+            if (!_sidebarCollapsed)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+                child: Text('NAVIGATION',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2)),
+              ),
 
             // Nav items
             Expanded(
@@ -210,8 +257,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 11),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: _sidebarCollapsed ? 8 : 12,
+                              vertical: 11),
                           decoration: BoxDecoration(
                             color: active
                                 ? Colors.white.withOpacity(0.16)
@@ -222,58 +270,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     color: Colors.white.withOpacity(0.12))
                                 : null,
                           ),
-                          child: Row(children: [
-                            // Active indicator bar
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              width: 3,
-                              height: active ? 18 : 0,
-                              margin: const EdgeInsets.only(right: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            Icon(
-                              active
-                                  ? _navItems[i].activeIcon
-                                  : _navItems[i].icon,
-                              color: active
-                                  ? Colors.white
-                                  : Colors.white.withOpacity(0.55),
-                              size: 19,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(_navItems[i].label,
-                                  style: TextStyle(
-                                    color: active
-                                        ? Colors.white
-                                        : Colors.white.withOpacity(0.65),
-                                    fontWeight: active
-                                        ? FontWeight.w600
-                                        : FontWeight.normal,
-                                    fontSize: 13.5,
-                                  )),
-                            ),
-                            // Badge
-                            if (badge != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
+                          child: Tooltip(
+                            message:
+                                _sidebarCollapsed ? _navItems[i].label : '',
+                            child: Row(
+                              mainAxisAlignment: _sidebarCollapsed
+                                  ? MainAxisAlignment.center
+                                  : MainAxisAlignment.start,
+                              children: [
+                                if (!_sidebarCollapsed)
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    width: active ? 3 : 0,
+                                    height: active ? 18 : 0,
+                                    margin: const EdgeInsets.only(right: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                Icon(
+                                  active
+                                      ? _navItems[i].activeIcon
+                                      : _navItems[i].icon,
                                   color: active
-                                      ? Colors.white.withOpacity(0.25)
-                                      : Colors.red.withOpacity(0.85),
-                                  borderRadius: BorderRadius.circular(10),
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.55),
+                                  size: 19,
                                 ),
-                                child: Text('$badge',
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold)),
-                              ),
-                          ]),
+                                if (!_sidebarCollapsed) ...[
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(_navItems[i].label,
+                                        style: TextStyle(
+                                          color: active
+                                              ? Colors.white
+                                              : Colors.white.withOpacity(0.65),
+                                          fontWeight: active
+                                              ? FontWeight.w600
+                                              : FontWeight.normal,
+                                          fontSize: 13.5,
+                                        )),
+                                  ),
+                                  if (badge != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: active
+                                            ? Colors.white.withOpacity(0.25)
+                                            : Colors.red.withOpacity(0.85),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text('$badge',
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold)),
+                                    ),
+                                ] else if (badge != null)
+                                  Positioned(
+                                    child: Container(
+                                      margin: const EdgeInsets.only(left: 2),
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Text('$badge',
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -286,46 +359,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Container(height: 1, color: Colors.white.withOpacity(0.12)),
             Padding(
               padding: const EdgeInsets.all(14),
-              child: Row(children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [
-                      Colors.white.withOpacity(0.3),
-                      Colors.white.withOpacity(0.1),
-                    ]),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color: Colors.white.withOpacity(0.3), width: 1.5),
+              child: Row(
+                mainAxisAlignment: _sidebarCollapsed
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        Colors.white.withOpacity(0.3),
+                        Colors.white.withOpacity(0.1),
+                      ]),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: Colors.white.withOpacity(0.3), width: 1.5),
+                    ),
+                    child:
+                        const Icon(Icons.person, color: Colors.white, size: 18),
                   ),
-                  child:
-                      const Icon(Icons.person, color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      Text(AuthService.currentUser ?? 'Admin',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13)),
-                      Text('Administrator',
-                          style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
-                              fontSize: 10)),
-                    ])),
-                IconButton(
-                  icon:
-                      const Icon(Icons.logout, color: Colors.white54, size: 17),
-                  tooltip: 'Logout',
-                  onPressed: _logout,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ]),
+                  if (!_sidebarCollapsed) ...[
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                          Text(AuthService.currentUser ?? 'Admin',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13)),
+                          Text('Administrator',
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                  fontSize: 10)),
+                        ])),
+                    IconButton(
+                      icon: const Icon(Icons.logout,
+                          color: Colors.white54, size: 17),
+                      tooltip: 'Logout',
+                      onPressed: _logout,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ]),
         ),

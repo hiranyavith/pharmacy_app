@@ -21,6 +21,7 @@ void main() async {
     await windowManager.show();
     await windowManager.focus();
     await windowManager.maximize();
+    await windowManager.setTitle('Sampath Book Shop - Urubokka');
   });
 
   final prefs = await SharedPreferences.getInstance();

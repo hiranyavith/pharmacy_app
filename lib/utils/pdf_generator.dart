@@ -240,7 +240,10 @@ class PdfGenerator {
         italic: true);
 
     // ── Page height ──────────────────────────────────────────────────────
-    final itemsH = bill.items.length * _hItemBase;
+    final customItemCount =
+        bill.items.where((i) => i.unitPrice != i.mrp && i.mrp > 0).length;
+    final itemsH =
+        bill.items.length * _hItemBase + customItemCount * (3.5 * _mm);
     final extraH = (bill.discount > 0 ? 5 * _mm : 0.0) +
         (!isCard && bill.given > 0 ? 10 * _mm : 0.0) +
         (isCard ? 6 * _mm : 0.0) +
@@ -331,23 +334,43 @@ class PdfGenerator {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(item.medName.toUpperCase(), style: b(fs: _fsItem)),
-                  pw.Row(children: [
-                    pw.Expanded(
-                      child: pw.Text(
-                        '  ${item.quantity} × Rs.${fmt.format(item.unitPrice)}'
-                        '${isCustom ? ' *' : ''}',
-                        style: b(fs: _fsSub),
+                  pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Expanded(
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              '  ${item.quantity} × Rs.${fmt.format(item.unitPrice)}'
+                              '${isCustom ? ' *' : ''}',
+                              style: b(fs: _fsSub),
+                            ),
+                            // ── MRP shown (struck-through) when a custom
+                            // selling price was applied at the till ──────
+                            if (isCustom)
+                              pw.Text(
+                                '  MRP: Rs.${fmt.format(item.mrp)}',
+                                style: pw.TextStyle(
+                                  fontSize: _fsSmall - 0.5,
+                                  font: pwReg,
+                                  color: PdfColors.grey600,
+                                  decoration: pw.TextDecoration.lineThrough,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
-                    pw.SizedBox(
-                      width: 70,
-                      child: pw.Text(
-                        'Rs.${fmt.format(item.lineTotal)}',
-                        textAlign: pw.TextAlign.right,
-                        style: r(fs: _fsItem),
+                      pw.SizedBox(
+                        width: 70,
+                        child: pw.Text(
+                          'Rs.${fmt.format(item.lineTotal)}',
+                          textAlign: pw.TextAlign.right,
+                          style: r(fs: _fsItem),
+                        ),
                       ),
-                    ),
-                  ]),
+                    ],
+                  ),
                 ],
               ),
             );
